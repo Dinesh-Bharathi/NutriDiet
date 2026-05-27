@@ -1,0 +1,172 @@
+// prisma/schema.prisma
+// ─────────────────────────────────────────────────────────────────────────────
+// Prisma data model for the Nutri-Diet multi-tenant SaaS platform.
+// Phase 1: Core entities — Tenant, User, and Client foundation.
+//
+// Rules enforced here:
+//  - Every entity has a UUID primary key (cuid() used for URL-safety + performance)
+//  - Every entity that belongs to a tenant carries a tenantId FK
+//  - Soft-delete via deletedAt (no hard deletes on business data)
+//  - Timestamps (createdAt, updatedAt) on every table
+//  - All string IDs are generated server-side — never trust client-supplied IDs
+// ─────────────────────────────────────────────────────────────────────────────
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum Role {
+  OWNER
+  ADMIN
+  DIETITIAN
+  ASSISTANT
+  CLIENT
+}
+
+enum TenantPlan {
+  FREE
+  STARTER
+  PROFESSIONAL
+  ENTERPRISE
+}
+
+enum TenantStatus {
+  TRIAL
+  ACTIVE
+  SUSPENDED
+  CANCELLED
+}
+
+enum UserStatus {
+  PENDING
+  ACTIVE
+  INACTIVE
+  BANNED
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+  PREFER_NOT_TO_SAY
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TENANT
+// Top-level multi-tenancy entity. Every business (clinic, coach, dietitian)
+// is a Tenant. All data queries MUST include tenantId in the WHERE clause.
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Tenant {
+  id        String       @id @default(cuid())
+  name      String
+  slug      String       @unique
+  plan      TenantPlan   @default(FREE)
+  status    TenantStatus @default(TRIAL)
+
+  // Optional contact info
+  email     String?
+  phone     String?
+  address   String?
+  logoUrl   String?
+
+  // Timestamps
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+
+  // Relations
+  users     User[]
+  clients   Client[]
+
+  @@index([slug])
+  @@index([status])
+  @@map("tenants")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// USER
+// Platform users (staff side): OWNER, ADMIN, DIETITIAN, ASSISTANT.
+// CLIENT role users have a corresponding Client record.
+// ─────────────────────────────────────────────────────────────────────────────
+
+model User {
+  id           String     @id @default(cuid())
+  tenantId     String
+  email        String
+  passwordHash String
+  firstName    String
+  lastName     String
+  role         Role       @default(DIETITIAN)
+  status       UserStatus @default(PENDING)
+  phone        String?
+  avatarUrl    String?
+
+  // Security
+  emailVerifiedAt   DateTime?
+  lastLoginAt       DateTime?
+  passwordChangedAt DateTime?
+
+  // Timestamps
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  // Relations
+  tenant  Tenant   @relation(fields: [tenantId], references: [id])
+  clients Client[] @relation("AssignedDietitian")
+
+  // Compound unique: email must be unique within a tenant (not globally)
+  @@unique([tenantId, email])
+  @@index([tenantId])
+  @@index([tenantId, role])
+  @@index([tenantId, status])
+  @@map("users")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CLIENT
+// End-users of the wellness service. Can have a linked User account (for
+// portal access) or exist as a practitioner-managed record only.
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Client {
+  id           String  @id @default(cuid())
+  tenantId     String
+  dietitianId  String?  // Assigned practitioner (User with DIETITIAN role)
+
+  // Identity
+  firstName    String
+  lastName     String
+  email        String?
+  phone        String?
+  gender       Gender?
+  dateOfBirth  DateTime?
+  avatarUrl    String?
+
+  // Health context (non-PHI; PHI goes in a separate encrypted table in Phase 2)
+  notes        String?
+
+  // Timestamps
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  // Relations
+  tenant    Tenant  @relation(fields: [tenantId], references: [id])
+  dietitian User?   @relation("AssignedDietitian", fields: [dietitianId], references: [id])
+
+  @@index([tenantId])
+  @@index([tenantId, dietitianId])
+  @@index([tenantId, email])
+  @@map("clients")
+}

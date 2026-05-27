@@ -1,0 +1,37 @@
+# ─── DEPENDENCIES ───────────────────────────────────────────
+node_modules/
+
+# ─── ENVIRONMENT ────────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+
+# ─── LOGS ───────────────────────────────────────────────────
+logs/
+*.log
+
+# ─── BUILD ──────────────────────────────────────────────────
+dist/
+build/
+
+# ─── PRISMA ─────────────────────────────────────────────────
+# Keep migrations and schema but ignore generated client
+# (prisma generate produces it at runtime or build)
+
+# ─── OS ─────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ─── IDE ────────────────────────────────────────────────────
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+
+# ─── TESTING ────────────────────────────────────────────────
+coverage/
+.nyc_output/
+
+# ─── DOCKER ─────────────────────────────────────────────────
+# Ignore local docker overrides; keep docker-compose.yml
+docker-compose.override.yml
