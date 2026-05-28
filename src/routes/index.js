@@ -13,9 +13,9 @@ const router = Router();
 // Future modules (clients, meal-plans, appointments) are added here as they
 // are implemented.
 
-// Auth routes (public — no authenticate middleware)
-// import authRouter from '../modules/auth/auth.routes.js';
-// router.use('/auth', authRouter);
+// Auth routes (public — no authenticate middleware on most endpoints)
+import authRouter from '../modules/auth/auth.routes.js';
+router.use('/auth', authRouter);
 
 // User management routes (protected)
 // import userRouter from '../modules/users/user.routes.js';

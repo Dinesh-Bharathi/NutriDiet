@@ -1,7 +1,7 @@
 // prisma/schema.prisma
 // ─────────────────────────────────────────────────────────────────────────────
 // Prisma data model for the Nutri-Diet multi-tenant SaaS platform.
-// Phase 1: Core entities — Tenant, User, and Client foundation.
+// Phase 1 + 2: Tenant, User, Client, RefreshToken.
 //
 // Rules enforced here:
 //  - Every entity has a UUID primary key (cuid() used for URL-safety + performance)
@@ -122,8 +122,9 @@ model User {
   deletedAt DateTime?
 
   // Relations
-  tenant  Tenant   @relation(fields: [tenantId], references: [id])
-  clients Client[] @relation("AssignedDietitian")
+  tenant        Tenant         @relation(fields: [tenantId], references: [id])
+  clients       Client[]       @relation("AssignedDietitian")
+  refreshTokens RefreshToken[]
 
   // Compound unique: email must be unique within a tenant (not globally)
   @@unique([tenantId, email])
@@ -169,4 +170,28 @@ model Client {
   @@index([tenantId, dietitianId])
   @@index([tenantId, email])
   @@map("clients")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// REFRESH TOKEN
+// Stores hashed refresh tokens for secure rotation.
+// Raw token is sent to client; only SHA-256 hash lives in DB.
+// Token reuse triggers immediate revocation of all user sessions.
+// ─────────────────────────────────────────────────────────────────────────────
+
+model RefreshToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique  // SHA-256(rawToken) — NEVER the raw token
+  expiresAt DateTime
+  createdAt DateTime  @default(now())
+  revokedAt DateTime?
+  ipAddress String?
+  userAgent String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([userId, revokedAt])
+  @@map("refresh_tokens")
 }

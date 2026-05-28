@@ -7,7 +7,7 @@
 // DO NOT run against production databases.
 // ─────────────────────────────────────────────────────────────────────────────
 import { PrismaClient } from "@prisma/client";
-import bcrypt from "bcryptjs";
+import argon2 from "argon2";
 
 const prisma = new PrismaClient();
 
@@ -31,7 +31,9 @@ async function main() {
   console.log(`✅ Tenant created: ${tenant.name} (${tenant.id})`);
 
   // ── Owner User ─────────────────────────────────────────────────────────────
-  const passwordHash = await bcrypt.hash("Admin@123456", 12);
+  const passwordHash = await argon2.hash('Admin@123456', {
+    type: argon2.argon2id, memoryCost: 65536, timeCost: 3, parallelism: 4,
+  });
 
   const owner = await prisma.user.upsert({
     where: {
@@ -56,7 +58,9 @@ async function main() {
   console.log(`✅ Owner user created: ${owner.email} (${owner.id})`);
 
   // ── Demo Dietitian ─────────────────────────────────────────────────────────
-  const dietitianHash = await bcrypt.hash("Dietitian@123", 12);
+  const dietitianHash = await argon2.hash('Dietitian@123', {
+    type: argon2.argon2id, memoryCost: 65536, timeCost: 3, parallelism: 4,
+  });
 
   const dietitian = await prisma.user.upsert({
     where: {
