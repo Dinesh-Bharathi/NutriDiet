@@ -13,7 +13,7 @@ import { TOKEN_EXPIRY_MS, REDIS_KEY_PREFIX } from "./auth.constants.js";
 import ApiError from "../../utils/ApiError.js";
 import logger from "../../utils/logger.js";
 import { TENANT_STATUS, USER_STATUS } from "../../config/constants.js";
-import getRedisClient from "../../lib/redis.js";
+import getRedisClient, { isRedisAvailable } from "../../lib/redis.js";
 
 // Argon2id parameters — OWASP recommended minimums for production
 const ARGON2_OPTIONS = {
@@ -232,10 +232,18 @@ export const authService = {
       if (payload?.jti && payload?.exp) {
         const ttlSeconds = payload.exp - Math.floor(Date.now() / 1000);
         if (ttlSeconds > 0) {
-          const key = REDIS_KEY_PREFIX.ACCESS_TOKEN_BLOCKLIST + payload.jti;
-          // SETEX: set with expiry — key auto-deletes when the token would have expired anyway
-          await redis.setex(key, ttlSeconds, '1');
-          logger.info("Access token blocklisted", { jti: payload.jti, ttlSeconds });
+          if (redis && isRedisAvailable()) {
+            try {
+              const key = REDIS_KEY_PREFIX.ACCESS_TOKEN_BLOCKLIST + payload.jti;
+              // SETEX: set with expiry — key auto-deletes when the token would have expired anyway
+              await redis.setex(key, ttlSeconds, '1');
+              logger.info("Access token blocklisted", { jti: payload.jti, ttlSeconds });
+            } catch (err) {
+              logger.warn("Redis blocklist failed", { error: err.message, jti: payload.jti });
+            }
+          } else {
+            logger.info("Redis unavailable, skipping access token blocklisting", { jti: payload.jti });
+          }
         }
       }
     }

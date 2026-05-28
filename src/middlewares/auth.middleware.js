@@ -18,7 +18,8 @@ const { verify } = jwtPkg;
 import ApiError from "../utils/ApiError.js";
 import env from "../config/env.js";
 import { TOKEN_TYPES } from "../config/constants.js";
-import getRedisClient from "../lib/redis.js";
+import getRedisClient, { isRedisAvailable } from "../lib/redis.js";
+import logger from "../utils/logger.js";
 import { REDIS_KEY_PREFIX } from "../modules/auth/auth.constants.js";
 
 /**
@@ -77,15 +78,20 @@ export async function authenticate(req, _res, next) {
     // This gives us immediate access token invalidation without a DB query.
     if (decoded.jti) {
       const redis = getRedisClient();
-      const blocklisted = await redis.exists(
-        REDIS_KEY_PREFIX.ACCESS_TOKEN_BLOCKLIST + decoded.jti,
-      );
+      if (redis && isRedisAvailable()) {
+        try {
+          const blocklisted = await redis.exists(
+            REDIS_KEY_PREFIX.ACCESS_TOKEN_BLOCKLIST + decoded.jti,
+          );
 
-      console.log("blocklisted", blocklisted);
-      if (blocklisted) {
-        return next(
-          ApiError.unauthorized("Token has been revoked. Please log in again."),
-        );
+          if (blocklisted) {
+            return next(
+              ApiError.unauthorized("Token has been revoked. Please log in again."),
+            );
+          }
+        } catch (err) {
+          logger.warn("Redis blocklist check failed, skipping", { error: err.message, jti: decoded.jti });
+        }
       }
     }
 

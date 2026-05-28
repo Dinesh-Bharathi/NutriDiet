@@ -55,7 +55,7 @@ const env = Object.freeze({
   JWT_REFRESH_EXPIRES_IN: require_env('JWT_REFRESH_EXPIRES_IN', '7d'),
 
   // ── Redis ─────────────────────────────────────────────────────────────────
-  REDIS_URL: require_env('REDIS_URL', 'redis://localhost:6379'),
+  REDIS_URL: process.env.REDIS_URL || null,
 
   // ── CORS ─────────────────────────────────────────────────────────────────
   CLIENT_URL: require_env('CLIENT_URL', 'http://localhost:3000'),
