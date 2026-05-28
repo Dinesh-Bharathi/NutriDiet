@@ -36,7 +36,7 @@ app.use(
 );
 
 // ─── CORS ─────────────────────────────────────────────────────────────────────
-const allowedOrigins = env.ALLOWED_ORIGINS.split(",");
+const allowedOrigins = env.CLIENT_URL.split(",");
 
 app.use(
   cors({
