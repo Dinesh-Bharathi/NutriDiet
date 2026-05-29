@@ -44,6 +44,7 @@ export async function resolveTenant(req, _res, next) {
         slug: true,
         plan: true,
         status: true,
+        themeId: true,
       },
     });
 

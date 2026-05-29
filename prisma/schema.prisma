@@ -78,6 +78,7 @@ model Tenant {
   phone     String?
   address   String?
   logoUrl   String?
+  themeId   String?
 
   // Timestamps
   createdAt DateTime @default(now())

@@ -26,6 +26,7 @@ export function mapUserToProfile(user, tenant) {
           name: t.name,
           slug: t.slug,
           plan: t.plan,
+          themeId: t.themeId ?? null,
         }
       : null,
     createdAt: user.createdAt,

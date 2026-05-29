@@ -22,8 +22,8 @@ router.use('/auth', authRouter);
 // router.use('/users', userRouter);
 
 // Tenant management routes (protected, OWNER / ADMIN only)
-// import tenantRouter from '../modules/tenants/tenant.routes.js';
-// router.use('/tenants', tenantRouter);
+import tenantRouter from '../modules/tenants/tenant.routes.js';
+router.use('/tenant', tenantRouter);
 
 // Client management routes (protected)
 // import clientRouter from '../modules/clients/client.routes.js';
