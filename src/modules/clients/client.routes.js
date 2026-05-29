@@ -57,4 +57,25 @@ router.delete(
   asyncHandler(clientController.deleteClient)
 );
 
+// ── Client Assessments Sub-Routes ───────────────────────────────────────────
+import { assessmentController } from '../assessments/assessment.controller.js';
+import {
+  createAssessmentSchema,
+  queryAssessmentsSchema,
+} from '../assessments/assessment.validation.js';
+
+// POST /api/v1/clients/:clientId/assessments - Create an assessment for a client
+router.post(
+  '/:clientId/assessments',
+  validate(createAssessmentSchema),
+  asyncHandler(assessmentController.createAssessment)
+);
+
+// GET /api/v1/clients/:clientId/assessments - List assessments for a client (paginated)
+router.get(
+  '/:clientId/assessments',
+  validate(queryAssessmentsSchema),
+  asyncHandler(assessmentController.getClientAssessments)
+);
+
 export default router;

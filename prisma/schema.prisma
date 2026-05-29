@@ -97,8 +97,9 @@ model Tenant {
   deletedAt DateTime?
 
   // Relations
-  users     User[]
-  clients   Client[]
+  users       User[]
+  clients     Client[]
+  assessments Assessment[]
 
   @@index([slug])
   @@index([status])
@@ -137,6 +138,7 @@ model User {
   tenant        Tenant         @relation(fields: [tenantId], references: [id])
   clients       Client[]       @relation("AssignedDietitian")
   refreshTokens RefreshToken[]
+  assessments   Assessment[]
 
   // Compound unique: email must be unique within a tenant (not globally)
   @@unique([tenantId, email])
@@ -178,8 +180,9 @@ model Client {
   deletedAt DateTime?
 
   // Relations
-  tenant    Tenant  @relation(fields: [tenantId], references: [id])
-  dietitian User?   @relation("AssignedDietitian", fields: [dietitianId], references: [id])
+  tenant      Tenant       @relation(fields: [tenantId], references: [id])
+  dietitian   User?        @relation("AssignedDietitian", fields: [dietitianId], references: [id])
+  assessments Assessment[]
 
   @@index([tenantId])
   @@index([tenantId, dietitianId])
@@ -209,4 +212,62 @@ model RefreshToken {
   @@index([userId])
   @@index([userId, revokedAt])
   @@map("refresh_tokens")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ASSESSMENT
+// Clinical assessment records.
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum ActivityLevel {
+  SEDENTARY
+  LIGHTLY_ACTIVE
+  MODERATELY_ACTIVE
+  VERY_ACTIVE
+  EXTRA_ACTIVE
+}
+
+model Assessment {
+  id             String        @id @default(cuid())
+  tenantId       String
+  clientId       String
+  createdBy      String
+
+  title          String
+  assessmentDate DateTime
+
+  heightCm       Float?
+  weightKg       Float?
+  bmi            Float?
+
+  goal           String?
+
+  activityLevel  ActivityLevel?
+  waterIntakeLiters Float?
+
+  sleepHours     Float?
+
+  medicalConditions String?
+  allergies         String?
+  medications       String?
+
+  foodPreferences   String?
+  foodRestrictions  String?
+
+  notes             String?
+
+  // Timestamps
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  deletedAt      DateTime?
+
+  // Relations
+  tenant         Tenant        @relation(fields: [tenantId], references: [id])
+  client         Client        @relation(fields: [clientId], references: [id])
+  creator        User          @relation(fields: [createdBy], references: [id])
+
+  @@index([tenantId])
+  @@index([clientId])
+  @@index([tenantId, clientId])
+  @@map("assessments")
 }

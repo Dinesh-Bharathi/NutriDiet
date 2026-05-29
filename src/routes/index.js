@@ -29,6 +29,10 @@ router.use('/tenant', tenantRouter);
 import clientRouter from '../modules/clients/client.routes.js';
 router.use('/clients', clientRouter);
 
+// Assessment management routes (protected)
+import assessmentRouter from '../modules/assessments/assessment.routes.js';
+router.use('/assessments', assessmentRouter);
+
 // ── Foundation ping route ────────────────────────────────────────────────────
 router.get('/ping', (_req, res) => {
   res.status(200).json({
