@@ -26,8 +26,8 @@ import tenantRouter from '../modules/tenants/tenant.routes.js';
 router.use('/tenant', tenantRouter);
 
 // Client management routes (protected)
-// import clientRouter from '../modules/clients/client.routes.js';
-// router.use('/clients', clientRouter);
+import clientRouter from '../modules/clients/client.routes.js';
+router.use('/clients', clientRouter);
 
 // ── Foundation ping route ────────────────────────────────────────────────────
 router.get('/ping', (_req, res) => {

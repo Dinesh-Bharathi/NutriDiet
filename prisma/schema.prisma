@@ -60,6 +60,17 @@ enum Gender {
   PREFER_NOT_TO_SAY
 }
 
+enum ClientStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum OnboardingStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // TENANT
 // Top-level multi-tenancy entity. Every business (clinic, coach, dietitian)
@@ -157,6 +168,9 @@ model Client {
 
   // Health context (non-PHI; PHI goes in a separate encrypted table in Phase 2)
   notes        String?
+
+  status           ClientStatus      @default(ACTIVE)
+  onboardingStatus OnboardingStatus  @default(PENDING)
 
   // Timestamps
   createdAt DateTime  @default(now())
