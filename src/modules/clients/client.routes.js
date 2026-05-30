@@ -78,4 +78,25 @@ router.get(
   asyncHandler(assessmentController.getClientAssessments)
 );
 
+// ── Client Diet Plans Sub-Routes ──────────────────────────────────────────────
+import { dietPlanController } from '../diet-plans/diet-plan.controller.js';
+import {
+  createDietPlanSchema,
+  queryDietPlansSchema,
+} from '../diet-plans/diet-plan.validation.js';
+
+// POST /api/v1/clients/:clientId/diet-plans - Create a diet plan for a client
+router.post(
+  '/:clientId/diet-plans',
+  validate(createDietPlanSchema),
+  asyncHandler(dietPlanController.createDietPlan)
+);
+
+// GET /api/v1/clients/:clientId/diet-plans - List diet plans for a client (paginated)
+router.get(
+  '/:clientId/diet-plans',
+  validate(queryDietPlansSchema),
+  asyncHandler(dietPlanController.getClientDietPlans)
+);
+
 export default router;

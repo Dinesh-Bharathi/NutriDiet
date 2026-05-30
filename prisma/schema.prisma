@@ -100,6 +100,7 @@ model Tenant {
   users       User[]
   clients     Client[]
   assessments Assessment[]
+  dietPlans   DietPlan[]
 
   @@index([slug])
   @@index([status])
@@ -139,6 +140,7 @@ model User {
   clients       Client[]       @relation("AssignedDietitian")
   refreshTokens RefreshToken[]
   assessments   Assessment[]
+  dietPlans     DietPlan[]
 
   // Compound unique: email must be unique within a tenant (not globally)
   @@unique([tenantId, email])
@@ -183,6 +185,7 @@ model Client {
   tenant      Tenant       @relation(fields: [tenantId], references: [id])
   dietitian   User?        @relation("AssignedDietitian", fields: [dietitianId], references: [id])
   assessments Assessment[]
+  dietPlans   DietPlan[]
 
   @@index([tenantId])
   @@index([tenantId, dietitianId])
@@ -265,9 +268,103 @@ model Assessment {
   tenant         Tenant        @relation(fields: [tenantId], references: [id])
   client         Client        @relation(fields: [clientId], references: [id])
   creator        User          @relation(fields: [createdBy], references: [id])
+  dietPlans      DietPlan[]
 
   @@index([tenantId])
   @@index([clientId])
   @@index([tenantId, clientId])
   @@map("assessments")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DIET PLAN
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum DietPlanStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+enum MealType {
+  BREAKFAST
+  MID_MORNING
+  LUNCH
+  EVENING_SNACK
+  DINNER
+  BEDTIME
+}
+
+model DietPlan {
+  id           String  @id @default(cuid())
+  tenantId     String
+  clientId     String
+  assessmentId String?
+
+  title        String
+  description  String?
+  goal         String?
+
+  dailyCalories Int?
+  proteinGrams  Float?
+  carbGrams     Float?
+  fatGrams      Float?
+
+  startDate DateTime?
+  endDate   DateTime?
+
+  status DietPlanStatus @default(DRAFT)
+
+  createdBy String
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  // Relations
+  tenant     Tenant        @relation(fields: [tenantId], references: [id])
+  client     Client        @relation(fields: [clientId], references: [id])
+  assessment Assessment?   @relation(fields: [assessmentId], references: [id])
+  creator    User          @relation(fields: [createdBy], references: [id])
+  meals      DietPlanMeal[]
+
+  @@index([tenantId])
+  @@index([clientId])
+  @@index([tenantId, clientId])
+  @@map("diet_plans")
+}
+
+model DietPlanMeal {
+  id         String   @id @default(cuid())
+  dietPlanId String
+  name       MealType
+  mealOrder  Int
+  mealTime   String?
+  notes      String?
+
+  // Relations
+  dietPlan DietPlan              @relation(fields: [dietPlanId], references: [id], onDelete: Cascade)
+  items    DietPlanMealItem[]
+
+  @@index([dietPlanId])
+  @@map("diet_plan_meals")
+}
+
+model DietPlanMealItem {
+  id        String  @id @default(cuid())
+  mealId    String
+  foodName  String
+  quantity  Float
+  unit      String
+  calories  Float?
+  protein   Float?
+  carbs     Float?
+  fat       Float?
+  notes     String?
+
+  // Relations
+  meal DietPlanMeal @relation(fields: [mealId], references: [id], onDelete: Cascade)
+
+  @@index([mealId])
+  @@map("diet_plan_meal_items")
 }

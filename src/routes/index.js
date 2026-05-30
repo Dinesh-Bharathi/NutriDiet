@@ -33,6 +33,12 @@ router.use('/clients', clientRouter);
 import assessmentRouter from '../modules/assessments/assessment.routes.js';
 router.use('/assessments', assessmentRouter);
 
+// Diet Plan, Meal, and Meal Item routes (protected)
+import dietPlanRouter, { mealRouter, mealItemRouter } from '../modules/diet-plans/diet-plan.routes.js';
+router.use('/diet-plans', dietPlanRouter);
+router.use('/meals', mealRouter);
+router.use('/meal-items', mealItemRouter);
+
 // ── Foundation ping route ────────────────────────────────────────────────────
 router.get('/ping', (_req, res) => {
   res.status(200).json({
