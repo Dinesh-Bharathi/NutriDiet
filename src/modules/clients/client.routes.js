@@ -99,4 +99,25 @@ router.get(
   asyncHandler(dietPlanController.getClientDietPlans)
 );
 
+// ── Client Check-Ins Sub-Routes ─────────────────────────────────────────────
+import { checkInController } from '../check-ins/check-in.controller.js';
+import {
+  createCheckInSchema,
+  queryCheckInsSchema,
+} from '../check-ins/check-in.validation.js';
+
+// POST /api/v1/clients/:clientId/check-ins - Create a check-in for a client
+router.post(
+  '/:clientId/check-ins',
+  validate(createCheckInSchema),
+  asyncHandler(checkInController.createCheckIn)
+);
+
+// GET /api/v1/clients/:clientId/check-ins - List check-ins for a client (paginated)
+router.get(
+  '/:clientId/check-ins',
+  validate(queryCheckInsSchema),
+  asyncHandler(checkInController.getClientCheckIns)
+);
+
 export default router;

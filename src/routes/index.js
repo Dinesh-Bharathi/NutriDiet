@@ -49,6 +49,10 @@ router.use('/diet-plan-templates', dietPlanTemplateRouter);
 router.use('/template-meals', templateMealRouter);
 router.use('/template-meal-items', templateMealItemRouter);
 
+// Check-ins routes (protected)
+import checkInRouter from '../modules/check-ins/check-in.routes.js';
+router.use('/check-ins', checkInRouter);
+
 // ── Foundation ping route ────────────────────────────────────────────────────
 router.get('/ping', (_req, res) => {
   res.status(200).json({

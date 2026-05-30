@@ -103,6 +103,7 @@ model Tenant {
   dietPlans   DietPlan[]
   foodLibrary FoodLibrary[]
   dietPlanTemplates DietPlanTemplate[]
+  clientCheckIns ClientCheckIn[]
 
   @@index([slug])
   @@index([status])
@@ -144,6 +145,7 @@ model User {
   assessments       Assessment[]
   dietPlans         DietPlan[]
   dietPlanTemplates DietPlanTemplate[]
+  reviewedCheckIns ClientCheckIn[]
 
   // Compound unique: email must be unique within a tenant (not globally)
   @@unique([tenantId, email])
@@ -189,6 +191,7 @@ model Client {
   dietitian   User?        @relation("AssignedDietitian", fields: [dietitianId], references: [id])
   assessments Assessment[]
   dietPlans   DietPlan[]
+  checkIns    ClientCheckIn[]
 
   @@index([tenantId])
   @@index([tenantId, dietitianId])
@@ -339,6 +342,7 @@ model DietPlan {
   assessment Assessment?   @relation(fields: [assessmentId], references: [id])
   creator    User          @relation(fields: [createdBy], references: [id])
   meals      DietPlanMeal[]
+  checkIns   ClientCheckIn[]
 
   @@index([tenantId])
   @@index([clientId])
@@ -496,3 +500,72 @@ model DietPlanTemplateMealItem {
   @@index([foodLibraryId])
   @@map("diet_plan_template_meal_items")
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CLIENT CHECK-INS
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum CheckInStatus {
+  PENDING
+  SUBMITTED
+  REVIEWED
+}
+
+model ClientCheckIn {
+  id                String        @id @default(cuid())
+  tenantId          String
+  clientId          String
+  dietPlanId        String?
+  
+  checkInDate       DateTime
+  submittedAt       DateTime?
+  reviewedAt        DateTime?
+  reviewedBy        String?
+  
+  status            CheckInStatus @default(PENDING)
+  requiresFollowUp  Boolean       @default(false)
+
+  // Weight & Measurements
+  weightKg          Float?
+  waistCm           Float?
+  hipCm             Float?
+  chestCm           Float?
+  armCm             Float?
+  thighCm           Float?
+
+  // Lifestyle
+  waterIntakeLiters Float?
+  sleepHours        Float?
+  exerciseDays      Int?
+
+  // Self Assessment
+  energyLevel       Int?
+  stressLevel       Int?
+  moodLevel         Int?
+  planAdherence     Int?
+  adherenceNotes    String?
+
+  // Notes
+  clientNotes       String?
+  practitionerNotes String?
+
+  // Audit
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  deletedAt         DateTime?
+
+  // Relations
+  tenant            Tenant        @relation(fields: [tenantId], references: [id])
+  client            Client        @relation(fields: [clientId], references: [id])
+  dietPlan          DietPlan?     @relation(fields: [dietPlanId], references: [id], onDelete: SetNull)
+  reviewer          User?         @relation(fields: [reviewedBy], references: [id], onDelete: SetNull)
+
+  @@index([clientId])
+  @@index([tenantId])
+  @@index([status])
+  @@index([submittedAt])
+  @@index([checkInDate])
+  @@index([clientId, checkInDate])
+  @@map("client_check_ins")
+}
+
