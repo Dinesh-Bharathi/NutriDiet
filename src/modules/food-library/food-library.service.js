@@ -36,7 +36,7 @@ export const foodLibraryService = {
         foodName: food.foodName,
         commonName: food.commonName,
         brandName: food.brandName,
-        sourceType: food.sourceType,
+        sourceType: food.isSystem ? 'SYSTEM' : 'CUSTOM',
         defaultQuantity: food.defaultQuantity,
         defaultUnit: food.defaultUnit,
         servingSize: food.servingSize,

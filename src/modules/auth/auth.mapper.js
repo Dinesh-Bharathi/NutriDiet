@@ -12,24 +12,36 @@
 export function mapUserToProfile(user, tenant) {
   const t = tenant ?? user.tenant;
   return {
-    id:        user.id,
-    email:     user.email,
-    firstName: user.firstName,
-    lastName:  user.lastName,
-    fullName:  `${user.firstName} ${user.lastName}`,
-    role:      user.role,
-    status:    user.status,
-    avatarUrl: user.avatarUrl ?? null,
+    user: {
+      id:        user.id,
+      email:     user.email,
+      firstName: user.firstName,
+      lastName:  user.lastName,
+      fullName:  `${user.firstName} ${user.lastName}`,
+      role:      user.role,
+      status:    user.status,
+      avatarUrl: user.avatarUrl ?? null,
+      createdAt: user.createdAt,
+    },
     tenant: t
       ? {
-          id:   t.id,
-          name: t.name,
-          slug: t.slug,
-          plan: t.plan,
-          themeId: t.themeId ?? null,
+          id:                t.id,
+          name:              t.name,
+          slug:              t.slug,
+          countryCode:       t.countryCode ?? null,
+          timezone:          t.timezone ?? 'UTC',
+          locale:            t.locale ?? 'en-US',
+          currencyCode:      t.currencyCode ?? 'USD',
+          measurementSystem: t.measurementSystem ?? 'METRIC',
+          updatedAt:         t.updatedAt,
+          features: {
+            multiBranch: false,
+            clientPortal: false,
+            mobileApp: false,
+            whiteLabel: false,
+          },
         }
       : null,
-    createdAt: user.createdAt,
   };
 }
 

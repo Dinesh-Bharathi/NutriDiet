@@ -1,0 +1,128 @@
+// src/modules/settings/settings.service.js
+import { createRequire } from 'module';
+import prisma from '../../lib/prisma.js';
+import ApiError from '../../utils/ApiError.js';
+
+const require = createRequire(import.meta.url);
+const countries = require('i18n-iso-countries');
+const enLocale = require('i18n-iso-countries/langs/en.json');
+countries.registerLocale(enLocale);
+
+const currencyCodes = require('currency-codes');
+const countriesAndTimezones = require('countries-and-timezones');
+
+const SUPPORTED_LOCALES = [
+  { code: 'en-US', name: 'English (United States)' },
+  { code: 'en-GB', name: 'English (United Kingdom)' },
+  { code: 'en-IN', name: 'English (India)' },
+  { code: 'es-ES', name: 'Español (España)' },
+  { code: 'es-MX', name: 'Español (México)' },
+  { code: 'fr-FR', name: 'Français (France)' },
+  { code: 'de-DE', name: 'Deutsch (Deutschland)' },
+  { code: 'it-IT', name: 'Italiano (Italia)' },
+  { code: 'pt-BR', name: 'Português (Brasil)' },
+];
+
+let cachedLocalizationOptions = null;
+
+function ensureLocalizationCache() {
+  if (cachedLocalizationOptions) return;
+
+  // 1. Countries
+  const countryObj = countries.getNames('en', { select: 'official' });
+  const countriesList = Object.entries(countryObj).map(([code, name]) => ({
+    code,
+    name,
+  }));
+
+  // 2. Currencies
+  const currenciesList = currencyCodes.data.map((item) => ({
+    code: item.code,
+    name: item.currency,
+  }));
+
+  // 3. Timezones
+  const timezonesList = Object.values(countriesAndTimezones.getAllTimezones()).map((tz) => ({
+    name: tz.name,
+    utcOffset: tz.utcOffset,
+    utcOffsetStr: tz.utcOffsetStr,
+  }));
+
+  cachedLocalizationOptions = {
+    countries: countriesList.sort((a, b) => a.name.localeCompare(b.name)),
+    currencies: currenciesList.sort((a, b) => a.code.localeCompare(b.code)),
+    timezones: timezonesList.sort((a, b) => a.name.localeCompare(b.name)),
+    locales: SUPPORTED_LOCALES,
+  };
+}
+
+export const settingsService = {
+  /**
+   * Retrieves static localization options (countries, timezones, locales, currencies)
+   * served from memory cache.
+   */
+  getLocalizationOptions() {
+    ensureLocalizationCache();
+    return cachedLocalizationOptions;
+  },
+
+  /**
+   * Fetches settings for a specific tenant.
+   *
+   * @param {string} tenantId
+   */
+  async getTenantSettings(tenantId) {
+    const tenant = await prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: {
+        countryCode: true,
+        timezone: true,
+        locale: true,
+        currencyCode: true,
+        measurementSystem: true,
+        updatedAt: true,
+      },
+    });
+
+    if (!tenant) {
+      throw ApiError.notFound('Tenant');
+    }
+
+    return tenant;
+  },
+
+  /**
+   * Updates settings for a specific tenant.
+   *
+   * @param {string} tenantId
+   * @param {object} data
+   */
+  async updateTenantSettings(tenantId, data) {
+    const tenant = await prisma.tenant.findUnique({
+      where: { id: tenantId },
+    });
+
+    if (!tenant) {
+      throw ApiError.notFound('Tenant');
+    }
+
+    return prisma.tenant.update({
+      where: { id: tenantId },
+      data: {
+        countryCode: data.countryCode,
+        timezone: data.timezone,
+        locale: data.locale,
+        currencyCode: data.currencyCode,
+        measurementSystem: data.measurementSystem,
+      },
+      select: {
+        countryCode: true,
+        timezone: true,
+        locale: true,
+        currencyCode: true,
+        measurementSystem: true,
+        updatedAt: true,
+      },
+    });
+  },
+};

@@ -7,7 +7,7 @@ export const mapFoodItem = (food) => {
   return {
     id: food.id,
     foodName: food.foodName,
-    sourceType: food.sourceType,
+    sourceType: food.isSystem ? 'SYSTEM' : 'CUSTOM',
     defaultQuantity: food.defaultQuantity,
     defaultUnit: food.defaultUnit,
     servingSize: food.servingSize,

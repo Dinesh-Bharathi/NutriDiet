@@ -57,6 +57,10 @@ router.use('/check-ins', checkInRouter);
 import progressRouter from '../modules/progress/progress.routes.js';
 router.use('/reviews', progressRouter);
 
+// Settings routes (protected)
+import settingsRouter from '../modules/settings/settings.routes.js';
+router.use('/settings', settingsRouter);
+
 // Repeat Cycles & Template Cycles (protected)
 import cycleRouter from '../modules/diet-plans/cycle.routes.js';
 import templateCycleRouter from '../modules/diet-plan-templates/template-cycle.routes.js';

@@ -29,7 +29,7 @@ export const authRepository = {
       },
       include: {
         tenant: {
-          select: { id: true, name: true, slug: true, plan: true, status: true, themeId: true },
+          select: { id: true, name: true, slug: true, plan: true, status: true, themeId: true, countryCode: true, timezone: true, locale: true, currencyCode: true, measurementSystem: true, updatedAt: true },
         },
       },
     });
@@ -44,7 +44,7 @@ export const authRepository = {
       where:   { id: userId, tenantId, deletedAt: null },
       include: {
         tenant: {
-          select: { id: true, name: true, slug: true, plan: true, status: true, themeId: true },
+          select: { id: true, name: true, slug: true, plan: true, status: true, themeId: true, countryCode: true, timezone: true, locale: true, currencyCode: true, measurementSystem: true, updatedAt: true },
         },
       },
     });
@@ -92,7 +92,7 @@ export const authRepository = {
         },
         include: {
           tenant: {
-            select: { id: true, name: true, slug: true, plan: true, status: true, themeId: true },
+            select: { id: true, name: true, slug: true, plan: true, status: true, themeId: true, countryCode: true, timezone: true, locale: true, currencyCode: true, measurementSystem: true, updatedAt: true },
           },
         },
       });
@@ -120,7 +120,7 @@ export const authRepository = {
         user: {
           include: {
             tenant: {
-              select: { id: true, name: true, slug: true, plan: true, status: true, themeId: true },
+              select: { id: true, name: true, slug: true, plan: true, status: true, themeId: true, countryCode: true, timezone: true, locale: true, currencyCode: true, measurementSystem: true, updatedAt: true },
             },
           },
         },

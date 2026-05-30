@@ -71,6 +71,11 @@ enum OnboardingStatus {
   COMPLETED
 }
 
+enum MeasurementSystem {
+  METRIC
+  IMPERIAL
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // TENANT
 // Top-level multi-tenancy entity. Every business (clinic, coach, dietitian)
@@ -89,7 +94,12 @@ model Tenant {
   phone     String?
   address   String?
   logoUrl   String?
-  themeId   String?
+  themeId           String?
+  countryCode       String?
+  timezone          String            @default("UTC")
+  locale            String            @default("en-US")
+  currencyCode      String            @default("USD")
+  measurementSystem MeasurementSystem @default(METRIC)
 
   // Timestamps
   createdAt DateTime @default(now())
@@ -410,7 +420,7 @@ model FoodLibrary {
   id                String                     @id @default(cuid())
   tenantId          String
   foodName          String
-  sourceType        FoodSourceType             @default(CUSTOM)
+  isSystem          Boolean                    @default(false)
   defaultQuantity   Float
   defaultUnit       String
   servingSize       Float

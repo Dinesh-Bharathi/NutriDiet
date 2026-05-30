@@ -4,9 +4,11 @@ import prisma from '../../lib/prisma.js';
 
 export const foodLibraryRepository = {
   async create(tenantId, data) {
+    const { sourceType, ...rest } = data;
     return prisma.foodLibrary.create({
       data: {
-        ...data,
+        ...rest,
+        isSystem: sourceType === 'SYSTEM',
         tenantId,
       },
     });
@@ -16,8 +18,11 @@ export const foodLibraryRepository = {
     return prisma.foodLibrary.findFirst({
       where: {
         id,
-        tenantId,
         deletedAt: null,
+        OR: [
+          { tenantId },
+          { isSystem: true },
+        ],
       },
       include: {
         category: true,
@@ -34,12 +39,18 @@ export const foodLibraryRepository = {
   async findByName(tenantId, foodName) {
     return prisma.foodLibrary.findFirst({
       where: {
-        tenantId,
         foodName: {
           equals: foodName,
           mode: 'insensitive',
         },
         deletedAt: null,
+        OR: [
+          { tenantId },
+          { isSystem: true },
+        ],
+      },
+      orderBy: {
+        isSystem: 'asc', // CUSTOM (isSystem=false) takes precedence over SYSTEM
       },
     });
   },
@@ -50,8 +61,15 @@ export const foodLibraryRepository = {
     const take = limit;
 
     const where = {
-      tenantId,
       deletedAt: null,
+      AND: [
+        {
+          OR: [
+            { tenantId },
+            { isSystem: true },
+          ],
+        },
+      ],
     };
 
     // Filter by status (default to ACTIVE if not specified)
@@ -92,12 +110,14 @@ export const foodLibraryRepository = {
     }
 
     if (filters.query) {
-      where.OR = [
-        { foodName: { contains: filters.query, mode: 'insensitive' } },
-        { commonName: { contains: filters.query, mode: 'insensitive' } },
-        { brandName: { contains: filters.query, mode: 'insensitive' } },
-        { searchKeywords: { contains: filters.query, mode: 'insensitive' } },
-      ];
+      where.AND.push({
+        OR: [
+          { foodName: { contains: filters.query, mode: 'insensitive' } },
+          { commonName: { contains: filters.query, mode: 'insensitive' } },
+          { brandName: { contains: filters.query, mode: 'insensitive' } },
+          { searchKeywords: { contains: filters.query, mode: 'insensitive' } },
+        ],
+      });
     }
 
     const [foods, total] = await Promise.all([
@@ -132,10 +152,13 @@ export const foodLibraryRepository = {
 
   async update(tenantId, id, data) {
     const food = await this.findById(tenantId, id);
-    if (!food) return null;
+    if (!food || food.tenantId !== tenantId) return null;
 
     // Handle tag mapping updates if provided in data
-    const { tagIds, ...updateData } = data;
+    const { tagIds, sourceType, ...updateData } = data;
+    if (sourceType !== undefined) {
+      updateData.isSystem = sourceType === 'SYSTEM';
+    }
 
     return prisma.$transaction(async (tx) => {
       if (tagIds !== undefined) {
