@@ -53,6 +53,10 @@ router.use('/template-meal-items', templateMealItemRouter);
 import checkInRouter from '../modules/check-ins/check-in.routes.js';
 router.use('/check-ins', checkInRouter);
 
+// Progress & Review Dashboard routes (protected)
+import progressRouter from '../modules/progress/progress.routes.js';
+router.use('/reviews', progressRouter);
+
 // ── Foundation ping route ────────────────────────────────────────────────────
 router.get('/ping', (_req, res) => {
   res.status(200).json({

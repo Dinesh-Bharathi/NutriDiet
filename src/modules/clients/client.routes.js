@@ -120,4 +120,25 @@ router.get(
   asyncHandler(checkInController.getClientCheckIns)
 );
 
+// ── Client Progress Tracking Sub-Routes ──────────────────────────────────────
+import { progressController } from '../progress/progress.controller.js';
+
+// GET /api/v1/clients/:clientId/progress - Chronological progress trends
+router.get(
+  '/:clientId/progress',
+  asyncHandler(progressController.getClientProgress)
+);
+
+// GET /api/v1/clients/:clientId/progress-summary - Client progress summary
+router.get(
+  '/:clientId/progress-summary',
+  asyncHandler(progressController.getClientProgressSummary)
+);
+
+// GET /api/v1/clients/:clientId/progress-snapshot - Client progress dashboard snapshot
+router.get(
+  '/:clientId/progress-snapshot',
+  asyncHandler(progressController.getClientProgressSnapshot)
+);
+
 export default router;

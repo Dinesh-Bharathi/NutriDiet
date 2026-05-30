@@ -1,0 +1,463 @@
+// src/modules/progress/progress.service.js
+// Read-only business logic for progress trends, client summaries, and reviews dashboard.
+import { progressRepository } from './progress.repository.js';
+import { clientRepository } from '../clients/client.repository.js';
+import { PROGRESS_CONSTANTS } from './progress.constants.js';
+import ApiError from '../../utils/ApiError.js';
+
+/**
+ * Calculates trend direction metadata.
+ *
+ * @param {number|null} change
+ * @returns {'UP'|'DOWN'|'STABLE'}
+ */
+function getTrendDirection(change) {
+  if (change === null || change === undefined) return 'STABLE';
+  if (change < -0.01) return 'DOWN';
+  if (change > 0.01) return 'UP';
+  return 'STABLE';
+}
+
+/**
+ * Processes list of check-ins into chronological weight trends.
+ *
+ * @param {Array<object>} checkIns - Sorted chronologically (asc)
+ * @returns {Array<object>}
+ */
+function calculateWeightTrends(checkIns) {
+  return checkIns
+    .map((c, i) => {
+      const currentVal = c.weightKg;
+      if (currentVal === null || currentVal === undefined) return null;
+
+      // Find previous weight value
+      let prevVal = null;
+      for (let j = i - 1; j >= 0; j--) {
+        if (checkIns[j].weightKg !== null && checkIns[j].weightKg !== undefined) {
+          prevVal = checkIns[j].weightKg;
+          break;
+        }
+      }
+
+      const change = prevVal !== null ? Math.round((currentVal - prevVal) * 100) / 100 : null;
+      return {
+        date: c.checkInDate.toISOString().split('T')[0],
+        value: currentVal,
+        change,
+        trend: getTrendDirection(change),
+      };
+    })
+    .filter(Boolean);
+}
+
+/**
+ * Processes list of check-ins into chronological BMI trends.
+ *
+ * @param {Array<object>} checkIns - Sorted chronologically (asc)
+ * @param {number|null} heightCm
+ * @returns {Array<object>}
+ */
+function calculateBmiTrends(checkIns, heightCm) {
+  if (!heightCm) return [];
+  const heightMeters = heightCm / 100;
+
+  return checkIns
+    .map((c, i) => {
+      const currentWeight = c.weightKg;
+      if (currentWeight === null || currentWeight === undefined) return null;
+
+      const currentBmi = Math.round((currentWeight / (heightMeters * heightMeters)) * 100) / 100;
+
+      // Find previous BMI value
+      let prevBmi = null;
+      for (let j = i - 1; j >= 0; j--) {
+        if (checkIns[j].weightKg !== null && checkIns[j].weightKg !== undefined) {
+          prevBmi = Math.round((checkIns[j].weightKg / (heightMeters * heightMeters)) * 100) / 100;
+          break;
+        }
+      }
+
+      const change = prevBmi !== null ? Math.round((currentBmi - prevBmi) * 100) / 100 : null;
+      return {
+        date: c.checkInDate.toISOString().split('T')[0],
+        value: currentBmi,
+        change,
+        trend: getTrendDirection(change),
+      };
+    })
+    .filter(Boolean);
+}
+
+/**
+ * Processes list of check-ins into chronological body measurement trends.
+ *
+ * @param {Array<object>} checkIns - Sorted chronologically (asc)
+ * @returns {Array<object>}
+ */
+function calculateMeasurementTrends(checkIns) {
+  const keys = ['waistCm', 'hipCm', 'chestCm', 'armCm', 'thighCm'];
+  return checkIns.map((c, i) => {
+    const item = {
+      date: c.checkInDate.toISOString().split('T')[0],
+    };
+
+    keys.forEach((key) => {
+      const currentVal = c[key];
+      const label = key.replace('Cm', ''); // 'waist', 'hip', etc.
+
+      if (currentVal !== null && currentVal !== undefined) {
+        item[label] = currentVal;
+
+        // Find previous measurement value
+        let prevVal = null;
+        for (let j = i - 1; j >= 0; j--) {
+          if (checkIns[j][key] !== null && checkIns[j][key] !== undefined) {
+            prevVal = checkIns[j][key];
+            break;
+          }
+        }
+
+        const change = prevVal !== null ? Math.round((currentVal - prevVal) * 100) / 100 : null;
+        item[`${label}Change`] = change;
+        item[`${label}Trend`] = getTrendDirection(change);
+      } else {
+        item[label] = null;
+        item[`${label}Change`] = null;
+        item[`${label}Trend`] = 'STABLE';
+      }
+    });
+
+    return item;
+  });
+}
+
+/**
+ * Processes list of check-ins into chronological lifestyle trends (sleep, water).
+ *
+ * @param {Array<object>} checkIns - Sorted chronologically (asc)
+ * @returns {Array<object>}
+ */
+function calculateLifestyleTrends(checkIns) {
+  return checkIns.map((c) => ({
+    date: c.checkInDate.toISOString().split('T')[0],
+    sleepHours: c.sleepHours ?? null,
+    waterIntakeLiters: c.waterIntakeLiters ?? null,
+    exerciseDays: c.exerciseDays ?? null,
+  }));
+}
+
+/**
+ * Processes list of check-ins into chronological plan adherence trends.
+ *
+ * @param {Array<object>} checkIns - Sorted chronologically (asc)
+ * @returns {Array<object>}
+ */
+function calculateAdherenceTrends(checkIns) {
+  return checkIns.map((c) => ({
+    date: c.checkInDate.toISOString().split('T')[0],
+    value: c.planAdherence ?? null,
+    notes: c.adherenceNotes || null,
+  }));
+}
+
+export const progressService = {
+  /**
+   * Retrieves chronological trends for weight, measurements, sleep, water, and adherence.
+   *
+   * @param {string} tenantId
+   * @param {string} clientId
+   * @returns {Promise<object>}
+   */
+  async getClientProgress(tenantId, clientId) {
+    const client = await clientRepository.findById(tenantId, clientId);
+    if (!client) {
+      throw ApiError.notFound('Client');
+    }
+
+    const checkIns = await progressRepository.findClientCheckIns(tenantId, clientId, 'asc');
+    const heightCm = await progressRepository.findClientLatestHeight(tenantId, clientId);
+
+    return {
+      weightTrends: calculateWeightTrends(checkIns),
+      bmiTrends: calculateBmiTrends(checkIns, heightCm),
+      measurementTrends: calculateMeasurementTrends(checkIns),
+      lifestyleTrends: calculateLifestyleTrends(checkIns),
+      adherenceTrends: calculateAdherenceTrends(checkIns),
+    };
+  },
+
+  /**
+   * Retrieves summary details of start/current states, total changes, and averages.
+   *
+   * @param {string} tenantId
+   * @param {string} clientId
+   * @returns {Promise<object>}
+   */
+  async getClientProgressSummary(tenantId, clientId) {
+    const client = await clientRepository.findById(tenantId, clientId);
+    if (!client) {
+      throw ApiError.notFound('Client');
+    }
+
+    const checkIns = await progressRepository.findClientCheckIns(tenantId, clientId, 'asc');
+
+    if (checkIns.length === 0) {
+      return {
+        currentWeight: null,
+        startingWeight: null,
+        weightChange: null,
+        weightTrend: 'STABLE',
+        currentWaist: null,
+        startingWaist: null,
+        waistChange: null,
+        waistTrend: 'STABLE',
+        currentHip: null,
+        startingHip: null,
+        hipChange: null,
+        hipTrend: 'STABLE',
+        currentChest: null,
+        startingChest: null,
+        chestChange: null,
+        chestTrend: 'STABLE',
+        currentArm: null,
+        startingArm: null,
+        armChange: null,
+        armTrend: 'STABLE',
+        currentThigh: null,
+        startingThigh: null,
+        thighChange: null,
+        thighTrend: 'STABLE',
+        averageSleep: null,
+        averageWater: null,
+        averageAdherence: null,
+        lastCheckInDate: null,
+        checkInCount: 0,
+      };
+    }
+
+    const latest = checkIns[checkIns.length - 1];
+    const lastCheckInDate = latest.checkInDate.toISOString().split('T')[0];
+    const checkInCount = checkIns.length;
+
+    // Helper to calculate starting, current, total changes, and trend
+    const getSummaryField = (key) => {
+      let start = null;
+      let current = null;
+
+      for (let i = 0; i < checkIns.length; i++) {
+        if (checkIns[i][key] !== null && checkIns[i][key] !== undefined) {
+          start = checkIns[i][key];
+          break;
+        }
+      }
+
+      for (let i = checkIns.length - 1; i >= 0; i--) {
+        if (checkIns[i][key] !== null && checkIns[i][key] !== undefined) {
+          current = checkIns[i][key];
+          break;
+        }
+      }
+
+      const change = start !== null && current !== null ? Math.round((current - start) * 100) / 100 : null;
+      return {
+        start,
+        current,
+        change,
+        trend: getTrendDirection(change),
+      };
+    };
+
+    const weightSummary = getSummaryField('weightKg');
+    const waistSummary = getSummaryField('waistCm');
+    const hipSummary = getSummaryField('hipCm');
+    const chestSummary = getSummaryField('chestCm');
+    const armSummary = getSummaryField('armCm');
+    const thighSummary = getSummaryField('thighCm');
+
+    const getAverage = (key) => {
+      const values = checkIns
+        .map((c) => c[key])
+        .filter((v) => v !== null && v !== undefined);
+      if (values.length === 0) return null;
+      const sum = values.reduce((acc, curr) => acc + curr, 0);
+      return Math.round((sum / values.length) * 10) / 10;
+    };
+
+    return {
+      currentWeight: weightSummary.current,
+      startingWeight: weightSummary.start,
+      weightChange: weightSummary.change,
+      weightTrend: weightSummary.trend,
+
+      currentWaist: waistSummary.current,
+      startingWaist: waistSummary.start,
+      waistChange: waistSummary.change,
+      waistTrend: waistSummary.trend,
+
+      currentHip: hipSummary.current,
+      startingHip: hipSummary.start,
+      hipChange: hipSummary.change,
+      hipTrend: hipSummary.trend,
+
+      currentChest: chestSummary.current,
+      startingChest: chestSummary.start,
+      chestChange: chestSummary.change,
+      chestTrend: chestSummary.trend,
+
+      currentArm: armSummary.current,
+      startingArm: armSummary.start,
+      armChange: armSummary.change,
+      armTrend: armSummary.trend,
+
+      currentThigh: thighSummary.current,
+      startingThigh: thighSummary.start,
+      thighChange: thighSummary.change,
+      thighTrend: thighSummary.trend,
+
+      averageSleep: getAverage('sleepHours'),
+      averageWater: getAverage('waterIntakeLiters'),
+      averageAdherence: getAverage('planAdherence'),
+      lastCheckInDate,
+      checkInCount,
+    };
+  },
+
+  /**
+   * Retrieves a simplified dashboard metrics snapshot for a client.
+   *
+   * @param {string} tenantId
+   * @param {string} clientId
+   * @returns {Promise<object>}
+   */
+  async getClientProgressSnapshot(tenantId, clientId) {
+    const summary = await this.getClientProgressSummary(tenantId, clientId);
+
+    // Calculate weight and waist lost (positive value represents loss)
+    const weightLost =
+      summary.startingWeight !== null && summary.currentWeight !== null
+        ? Math.round((summary.startingWeight - summary.currentWeight) * 100) / 100
+        : 0;
+
+    const waistLost =
+      summary.startingWaist !== null && summary.currentWaist !== null
+        ? Math.round((summary.startingWaist - summary.currentWaist) * 100) / 100
+        : 0;
+
+    // Average adherence percentage: average score (1-5) scaled to %
+    const averageAdherence =
+      summary.averageAdherence !== null ? Math.round((summary.averageAdherence / 5) * 100) : 0;
+
+    return {
+      weightLost,
+      waistLost,
+      averageAdherence,
+      averageSleep: summary.averageSleep || 0,
+      checkInCount: summary.checkInCount || 0,
+    };
+  },
+
+  /**
+   * Compiles practitioner review dashboard data and analytics.
+   *
+   * @param {string} tenantId
+   * @returns {Promise<object>}
+   */
+  async getReviewDashboard(tenantId) {
+    const [
+      pendingReviews,
+      requiresFollowUp,
+      recentCheckIns,
+      allCheckIns,
+      statusCounts,
+    ] = await Promise.all([
+      progressRepository.findPendingReviews(tenantId, 5),
+      progressRepository.findRequiresFollowUp(tenantId, 5),
+      progressRepository.findRecentCheckIns(tenantId, 5),
+      progressRepository.findTenantCheckIns(tenantId),
+      progressRepository.countCheckInsByStatus(tenantId),
+    ]);
+
+    // Group check-ins by client
+    const clientCheckInsMap = {};
+    allCheckIns.forEach((c) => {
+      if (!c.client) return;
+      if (!clientCheckInsMap[c.clientId]) {
+        clientCheckInsMap[c.clientId] = {
+          client: c.client,
+          checkIns: [],
+        };
+      }
+      clientCheckInsMap[c.clientId].checkIns.push(c);
+    });
+
+    const lowAdherenceClients = [];
+    const weightStalledClients = [];
+
+    Object.keys(clientCheckInsMap).forEach((clientId) => {
+      const entry = clientCheckInsMap[clientId];
+      const checkIns = entry.checkIns; // checkIns list is ordered checkInDate desc
+      const client = entry.client;
+      const fullName = `${client.firstName} ${client.lastName}`;
+
+      // 1. Calculate low adherence: average adherence < 3
+      const adherenceVals = checkIns
+        .map((c) => c.planAdherence)
+        .filter((v) => v !== null && v !== undefined);
+
+      if (adherenceVals.length > 0) {
+        const sum = adherenceVals.reduce((acc, curr) => acc + curr, 0);
+        const averageAdherence = Math.round((sum / adherenceVals.length) * 100) / 100;
+
+        if (averageAdherence < PROGRESS_CONSTANTS.ADHERENCE_LOW_THRESHOLD) {
+          const latestWeight = checkIns.find((c) => c.weightKg !== null)?.weightKg || null;
+          lowAdherenceClients.push({
+            clientId,
+            fullName,
+            latestWeight,
+            averageAdherence,
+          });
+        }
+      }
+
+      // 2. Calculate weight stalled: net weight change over last 3 check-ins >= -0.2 kg
+      // Sort chronologically (asc) to inspect chronological sequence
+      const sortedCheckIns = [...checkIns].sort((a, b) => a.checkInDate - b.checkInDate);
+      const weightCheckIns = sortedCheckIns.filter(
+        (c) => c.weightKg !== null && c.weightKg !== undefined
+      );
+
+      if (weightCheckIns.length >= 2) {
+        const recentWeightCheckIns = weightCheckIns.slice(-PROGRESS_CONSTANTS.RECENT_CHECK_INS_LIMIT);
+        const latest = recentWeightCheckIns[recentWeightCheckIns.length - 1];
+        const oldest = recentWeightCheckIns[0];
+
+        const weightChange = Math.round((latest.weightKg - oldest.weightKg) * 100) / 100;
+
+        if (weightChange >= PROGRESS_CONSTANTS.WEIGHT_STALL_TOLERANCE) {
+          weightStalledClients.push({
+            clientId,
+            fullName,
+            latestWeight: latest.weightKg,
+            weightChange,
+          });
+        }
+      }
+    });
+
+    // Calculate completion rate
+    const reviewed = statusCounts.REVIEWED || 0;
+    const submitted = statusCounts.SUBMITTED || 0;
+    const totalReviewable = reviewed + submitted;
+    const reviewCompletionRate =
+      totalReviewable > 0 ? Math.round((reviewed / totalReviewable) * 100) : 100;
+
+    return {
+      pendingReviews,
+      requiresFollowUp,
+      recentCheckIns,
+      lowAdherenceClients,
+      weightStalledClients,
+      reviewCompletionRate,
+    };
+  },
+};
