@@ -101,6 +101,8 @@ model Tenant {
   clients     Client[]
   assessments Assessment[]
   dietPlans   DietPlan[]
+  foodLibrary FoodLibrary[]
+  dietPlanTemplates DietPlanTemplate[]
 
   @@index([slug])
   @@index([status])
@@ -136,11 +138,12 @@ model User {
   deletedAt DateTime?
 
   // Relations
-  tenant        Tenant         @relation(fields: [tenantId], references: [id])
-  clients       Client[]       @relation("AssignedDietitian")
-  refreshTokens RefreshToken[]
-  assessments   Assessment[]
-  dietPlans     DietPlan[]
+  tenant            Tenant             @relation(fields: [tenantId], references: [id])
+  clients           Client[]           @relation("AssignedDietitian")
+  refreshTokens     RefreshToken[]
+  assessments       Assessment[]
+  dietPlans         DietPlan[]
+  dietPlanTemplates DietPlanTemplate[]
 
   // Compound unique: email must be unique within a tenant (not globally)
   @@unique([tenantId, email])
@@ -310,6 +313,15 @@ model DietPlan {
   carbGrams     Float?
   fatGrams      Float?
 
+  // Aggregated macros
+  totalCalories Int   @default(0)
+  totalProtein  Float @default(0)
+  totalCarbs    Float @default(0)
+  totalFat      Float @default(0)
+
+  // Versioning
+  versionNumber Int @default(1)
+
   startDate DateTime?
   endDate   DateTime?
 
@@ -367,4 +379,109 @@ model DietPlanMealItem {
 
   @@index([mealId])
   @@map("diet_plan_meal_items")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FOOD LIBRARY
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum FoodSourceType {
+  CUSTOM
+  SYSTEM
+}
+
+model FoodLibrary {
+  id              String          @id @default(cuid())
+  tenantId        String
+  foodName        String
+  sourceType      FoodSourceType  @default(CUSTOM)
+  defaultQuantity Float
+  defaultUnit     String
+  servingSize     Float
+  servingUnit     String
+  calories        Float?
+  protein         Float?
+  carbs           Float?
+  fat             Float?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  deletedAt       DateTime?
+
+  // Relations
+  tenant          Tenant          @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId])
+  @@index([tenantId, foodName])
+  @@map("food_library")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DIET PLAN TEMPLATES
+// ─────────────────────────────────────────────────────────────────────────────
+
+model DietPlanTemplate {
+  id             String   @id @default(cuid())
+  tenantId       String
+  title          String
+  description    String?
+  goal           String?
+  dailyCalories  Int?
+  proteinGrams   Float?
+  carbGrams      Float?
+  fatGrams       Float?
+
+  // Aggregated macros
+  totalCalories  Int      @default(0)
+  totalProtein   Float    @default(0)
+  totalCarbs     Float    @default(0)
+  totalFat       Float    @default(0)
+
+  isPublic       Boolean  @default(false)
+  createdBy      String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  deletedAt      DateTime?
+
+  // Relations
+  tenant         Tenant   @relation(fields: [tenantId], references: [id])
+  creator        User     @relation(fields: [createdBy], references: [id])
+  meals          DietPlanTemplateMeal[]
+
+  @@index([tenantId])
+  @@map("diet_plan_templates")
+}
+
+model DietPlanTemplateMeal {
+  id         String   @id @default(cuid())
+  templateId String
+  name       MealType
+  mealOrder  Int
+  mealTime   String?
+  notes      String?
+
+  // Relations
+  template   DietPlanTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  items      DietPlanTemplateMealItem[]
+
+  @@index([templateId])
+  @@map("diet_plan_template_meals")
+}
+
+model DietPlanTemplateMealItem {
+  id        String  @id @default(cuid())
+  mealId    String
+  foodName  String
+  quantity  Float
+  unit      String
+  calories  Float?
+  protein   Float?
+  carbs     Float?
+  fat       Float?
+  notes     String?
+
+  // Relations
+  meal      DietPlanTemplateMeal @relation(fields: [mealId], references: [id], onDelete: Cascade)
+
+  @@index([mealId])
+  @@map("diet_plan_template_meal_items")
 }

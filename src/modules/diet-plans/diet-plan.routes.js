@@ -59,6 +59,15 @@ dietPlanRouter.post(
   asyncHandler(dietPlanController.createMeal)
 );
 
+// POST /api/v1/diet-plans/:id/save-template
+import { clonePlanToTemplateSchema } from '../diet-plan-templates/diet-plan-template.validation.js';
+import { dietPlanTemplateController } from '../diet-plan-templates/diet-plan-template.controller.js';
+dietPlanRouter.post(
+  '/:id/save-template',
+  validate(clonePlanToTemplateSchema),
+  asyncHandler(dietPlanTemplateController.createTemplateFromPlan)
+);
+
 // ─── Meal Router (/meals) ───────────────────────────────────────────────────
 // PATCH /api/v1/meals/:mealId
 mealRouter.patch(

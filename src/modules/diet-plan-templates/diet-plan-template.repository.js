@@ -1,15 +1,14 @@
-// src/modules/diet-plans/diet-plan.repository.js
-// Database adapter for Diet Plans, Meals, and Meal Items — strictly tenant-isolated.
+// src/modules/diet-plan-templates/diet-plan-template.repository.js
+// Database operations for DietPlanTemplate, DietPlanTemplateMeal, and DietPlanTemplateMealItem — tenant-isolated.
 import prisma from '../../lib/prisma.js';
 
-export const dietPlanRepository = {
-  // ─── Diet Plan Operations ──────────────────────────────────────────────────
-  async create(tenantId, clientId, creatorId, data) {
-    return prisma.dietPlan.create({
+export const dietPlanTemplateRepository = {
+  // ─── Template Operations ───────────────────────────────────────────────────
+  async create(tenantId, creatorId, data) {
+    return prisma.dietPlanTemplate.create({
       data: {
         ...data,
         tenantId,
-        clientId,
         createdBy: creatorId,
       },
       include: {
@@ -32,7 +31,7 @@ export const dietPlanRepository = {
   },
 
   async findById(tenantId, id) {
-    return prisma.dietPlan.findFirst({
+    return prisma.dietPlanTemplate.findFirst({
       where: {
         id,
         tenantId,
@@ -57,19 +56,18 @@ export const dietPlanRepository = {
     });
   },
 
-  async findManyAndCount(tenantId, clientId, pagination) {
+  async findManyAndCount(tenantId, pagination) {
     const { page, limit } = pagination;
     const skip = (page - 1) * limit;
     const take = limit;
 
     const where = {
       tenantId,
-      clientId,
       deletedAt: null,
     };
 
-    const [dietPlans, total] = await Promise.all([
-      prisma.dietPlan.findMany({
+    const [templates, total] = await Promise.all([
+      prisma.dietPlanTemplate.findMany({
         where,
         skip,
         take,
@@ -85,14 +83,14 @@ export const dietPlanRepository = {
           },
         },
       }),
-      prisma.dietPlan.count({ where }),
+      prisma.dietPlanTemplate.count({ where }),
     ]);
 
-    return [dietPlans, total];
+    return [templates, total];
   },
 
   async update(id, data) {
-    return prisma.dietPlan.update({
+    return prisma.dietPlanTemplate.update({
       where: { id },
       data,
       include: {
@@ -115,7 +113,7 @@ export const dietPlanRepository = {
   },
 
   async softDelete(tenantId, id) {
-    const result = await prisma.dietPlan.updateMany({
+    const result = await prisma.dietPlanTemplate.updateMany({
       where: {
         id,
         tenantId,
@@ -128,24 +126,12 @@ export const dietPlanRepository = {
     return result.count;
   },
 
-  async findActivePlans(tenantId, clientId, excludePlanId) {
-    return prisma.dietPlan.findMany({
-      where: {
-        tenantId,
-        clientId,
-        status: 'ACTIVE',
-        deletedAt: null,
-        id: excludePlanId ? { not: excludePlanId } : undefined,
-      },
-    });
-  },
-
-  // ─── Meal Operations ───────────────────────────────────────────────────────
-  async createMeal(dietPlanId, data) {
-    return prisma.dietPlanMeal.create({
+  // ─── Template Meal Operations ──────────────────────────────────────────────
+  async createMeal(templateId, data) {
+    return prisma.dietPlanTemplateMeal.create({
       data: {
         ...data,
-        dietPlanId,
+        templateId,
       },
       include: {
         items: true,
@@ -154,41 +140,41 @@ export const dietPlanRepository = {
   },
 
   async findMealById(tenantId, mealId) {
-    return prisma.dietPlanMeal.findFirst({
+    return prisma.dietPlanTemplateMeal.findFirst({
       where: {
         id: mealId,
-        dietPlan: {
+        template: {
           tenantId,
           deletedAt: null,
         },
       },
       include: {
         items: true,
-        dietPlan: true,
+        template: true,
       },
     });
   },
 
   async updateMeal(mealId, data) {
-    return prisma.dietPlanMeal.update({
+    return prisma.dietPlanTemplateMeal.update({
       where: { id: mealId },
       data,
       include: {
         items: true,
-        dietPlan: true,
+        template: true,
       },
     });
   },
 
   async deleteMeal(mealId) {
-    return prisma.dietPlanMeal.delete({
+    return prisma.dietPlanTemplateMeal.delete({
       where: { id: mealId },
     });
   },
 
-  // ─── Meal Item Operations ──────────────────────────────────────────────────
+  // ─── Template Meal Item Operations ─────────────────────────────────────────
   async createMealItem(mealId, data) {
-    return prisma.dietPlanMealItem.create({
+    return prisma.dietPlanTemplateMealItem.create({
       data: {
         ...data,
         mealId,
@@ -197,11 +183,11 @@ export const dietPlanRepository = {
   },
 
   async findMealItemById(tenantId, itemId) {
-    return prisma.dietPlanMealItem.findFirst({
+    return prisma.dietPlanTemplateMealItem.findFirst({
       where: {
         id: itemId,
         meal: {
-          dietPlan: {
+          template: {
             tenantId,
             deletedAt: null,
           },
@@ -210,7 +196,7 @@ export const dietPlanRepository = {
       include: {
         meal: {
           include: {
-            dietPlan: true,
+            template: true,
           },
         },
       },
@@ -218,23 +204,24 @@ export const dietPlanRepository = {
   },
 
   async updateMealItem(itemId, data) {
-    return prisma.dietPlanMealItem.update({
+    return prisma.dietPlanTemplateMealItem.update({
       where: { id: itemId },
       data,
     });
   },
 
   async deleteMealItem(itemId) {
-    return prisma.dietPlanMealItem.delete({
+    return prisma.dietPlanTemplateMealItem.delete({
       where: { id: itemId },
     });
   },
 
-  async recalculatePlanNutrition(dietPlanId) {
-    const aggregations = await prisma.dietPlanMealItem.aggregate({
+  // ─── Template Auto Aggregation ─────────────────────────────────────────────
+  async recalculateTemplateNutrition(templateId) {
+    const aggregations = await prisma.dietPlanTemplateMealItem.aggregate({
       where: {
         meal: {
-          dietPlanId,
+          templateId,
         },
       },
       _sum: {
@@ -247,8 +234,8 @@ export const dietPlanRepository = {
 
     const sum = aggregations._sum;
 
-    return prisma.dietPlan.update({
-      where: { id: dietPlanId },
+    return prisma.dietPlanTemplate.update({
+      where: { id: templateId },
       data: {
         totalCalories: Math.round(sum.calories || 0),
         totalProtein: sum.protein || 0,

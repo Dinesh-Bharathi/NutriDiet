@@ -25,11 +25,11 @@ export const createAssessmentSchema = z.object({
     assessmentDate: z
       .preprocess((val) => (val ? new Date(val) : new Date()), z.date())
       .default(() => new Date()),
-    heightCm: optionalNumeric(10, 300, 'Height'),
-    weightKg: optionalNumeric(1, 500, 'Weight'),
+    heightCm: optionalNumeric(50, 250, 'Height'),
+    weightKg: optionalNumeric(2, 500, 'Weight'),
     goal: z.string().max(1000).nullable().optional(),
     activityLevel: activityLevelEnum.nullable().optional(),
-    waterIntakeLiters: optionalNumeric(0, 50, 'Water intake'),
+    waterIntakeLiters: optionalNumeric(0, 20, 'Water intake'),
     sleepHours: optionalNumeric(0, 24, 'Sleep hours'),
     medicalConditions: z.string().max(2000).nullable().optional(),
     allergies: z.string().max(2000).nullable().optional(),
@@ -49,11 +49,11 @@ export const updateAssessmentSchema = z.object({
     assessmentDate: z
       .preprocess((val) => (val ? new Date(val) : null), z.date())
       .optional(),
-    heightCm: optionalNumeric(10, 300, 'Height'),
-    weightKg: optionalNumeric(1, 500, 'Weight'),
+    heightCm: optionalNumeric(50, 250, 'Height'),
+    weightKg: optionalNumeric(2, 500, 'Weight'),
     goal: z.string().max(1000).nullable().optional(),
     activityLevel: activityLevelEnum.nullable().optional(),
-    waterIntakeLiters: optionalNumeric(0, 50, 'Water intake'),
+    waterIntakeLiters: optionalNumeric(0, 20, 'Water intake'),
     sleepHours: optionalNumeric(0, 24, 'Sleep hours'),
     medicalConditions: z.string().max(2000).nullable().optional(),
     allergies: z.string().max(2000).nullable().optional(),

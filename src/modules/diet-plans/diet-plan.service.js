@@ -5,6 +5,32 @@ import { clientRepository } from '../clients/client.repository.js';
 import { assessmentRepository } from '../assessments/assessment.repository.js';
 import ApiError from '../../utils/ApiError.js';
 
+// Helper to check if a plan is archived
+function checkNotArchived(dietPlan) {
+  if (dietPlan && dietPlan.status === 'ARCHIVED') {
+    throw ApiError.badRequest('Cannot modify an archived diet plan');
+  }
+}
+
+// Helper to validate active plan collision
+async function checkActivePlanCollision(tenantId, clientId, planId, startDate, endDate) {
+  const activePlans = await dietPlanRepository.findActivePlans(tenantId, clientId, planId);
+
+  const start = startDate ? new Date(startDate) : new Date();
+  const end = endDate ? new Date(endDate) : null;
+
+  for (const other of activePlans) {
+    const otherStart = other.startDate ? new Date(other.startDate) : new Date(other.createdAt);
+    const otherEnd = other.endDate ? new Date(other.endDate) : null;
+
+    // Two active plans overlap if (start <= otherEnd || otherEnd == null) && (otherStart <= end || end == null)
+    const overlaps = (start <= otherEnd || otherEnd === null) && (otherStart <= end || end === null);
+    if (overlaps) {
+      throw ApiError.badRequest('An active plan already exists for this client with overlapping dates');
+    }
+  }
+}
+
 export const dietPlanService = {
   // ─── Diet Plan Services ────────────────────────────────────────────────────
   async createDietPlan(tenantId, clientId, creatorId, data) {
@@ -20,6 +46,11 @@ export const dietPlanService = {
       if (!assessment || assessment.clientId !== clientId) {
         throw ApiError.badRequest('Assessment must belong to the same client');
       }
+    }
+
+    // 3. Prevent active plan collision
+    if (data.status === 'ACTIVE') {
+      await checkActivePlanCollision(tenantId, clientId, null, data.startDate, data.endDate);
     }
 
     return dietPlanRepository.create(tenantId, clientId, creatorId, data);
@@ -64,7 +95,10 @@ export const dietPlanService = {
       throw ApiError.notFound('Diet Plan');
     }
 
-    // 2. Verify assessment belongs to the same client and tenant if updated
+    // 2. Prevent modifying archived diet plan
+    checkNotArchived(existing);
+
+    // 3. Verify assessment belongs to the same client and tenant if updated
     if (updateData.assessmentId) {
       const assessment = await assessmentRepository.findById(tenantId, updateData.assessmentId);
       if (!assessment || assessment.clientId !== existing.clientId) {
@@ -72,10 +106,27 @@ export const dietPlanService = {
       }
     }
 
+    // 4. Prevent active plan collision
+    const finalStatus = updateData.status !== undefined ? updateData.status : existing.status;
+    const finalStart = updateData.startDate !== undefined ? updateData.startDate : existing.startDate;
+    const finalEnd = updateData.endDate !== undefined ? updateData.endDate : existing.endDate;
+
+    if (finalStatus === 'ACTIVE') {
+      await checkActivePlanCollision(tenantId, existing.clientId, id, finalStart, finalEnd);
+    }
+
     return dietPlanRepository.update(id, updateData);
   },
 
   async deleteDietPlan(tenantId, id) {
+    const existing = await dietPlanRepository.findById(tenantId, id);
+    if (!existing) {
+      throw ApiError.notFound('Diet Plan');
+    }
+
+    // Prevent deleting archived diet plan
+    checkNotArchived(existing);
+
     const affectedCount = await dietPlanRepository.softDelete(tenantId, id);
     if (affectedCount === 0) {
       throw ApiError.notFound('Diet Plan');
@@ -90,6 +141,9 @@ export const dietPlanService = {
       throw ApiError.notFound('Diet Plan');
     }
 
+    // Lock archived plans
+    checkNotArchived(dietPlan);
+
     return dietPlanRepository.createMeal(dietPlanId, data);
   },
 
@@ -100,6 +154,9 @@ export const dietPlanService = {
       throw ApiError.notFound('Meal');
     }
 
+    // Lock archived plans
+    checkNotArchived(meal.dietPlan);
+
     return dietPlanRepository.updateMeal(mealId, data);
   },
 
@@ -109,6 +166,9 @@ export const dietPlanService = {
     if (!meal) {
       throw ApiError.notFound('Meal');
     }
+
+    // Lock archived plans
+    checkNotArchived(meal.dietPlan);
 
     await dietPlanRepository.deleteMeal(mealId);
   },
@@ -121,7 +181,15 @@ export const dietPlanService = {
       throw ApiError.notFound('Meal');
     }
 
-    return dietPlanRepository.createMealItem(mealId, data);
+    // Lock archived plans
+    checkNotArchived(meal.dietPlan);
+
+    const createdItem = await dietPlanRepository.createMealItem(mealId, data);
+
+    // Auto-aggregate macros
+    await dietPlanRepository.recalculatePlanNutrition(meal.dietPlanId);
+
+    return createdItem;
   },
 
   async updateMealItem(tenantId, itemId, data) {
@@ -131,7 +199,15 @@ export const dietPlanService = {
       throw ApiError.notFound('Meal Item');
     }
 
-    return dietPlanRepository.updateMealItem(itemId, data);
+    // Lock archived plans
+    checkNotArchived(item.meal?.dietPlan);
+
+    const updatedItem = await dietPlanRepository.updateMealItem(itemId, data);
+
+    // Auto-aggregate macros
+    await dietPlanRepository.recalculatePlanNutrition(item.meal.dietPlanId);
+
+    return updatedItem;
   },
 
   async deleteMealItem(tenantId, itemId) {
@@ -141,6 +217,12 @@ export const dietPlanService = {
       throw ApiError.notFound('Meal Item');
     }
 
+    // Lock archived plans
+    checkNotArchived(item.meal?.dietPlan);
+
     await dietPlanRepository.deleteMealItem(itemId);
+
+    // Auto-aggregate macros
+    await dietPlanRepository.recalculatePlanNutrition(item.meal.dietPlanId);
   },
 };
