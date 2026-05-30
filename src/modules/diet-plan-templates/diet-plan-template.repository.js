@@ -26,6 +26,22 @@ export const dietPlanTemplateRepository = {
             items: true,
           },
         },
+        cycles: {
+          orderBy: { createdAt: 'asc' },
+          include: {
+            days: {
+              orderBy: { dayNumber: 'asc' },
+              include: {
+                meals: {
+                  orderBy: { mealOrder: 'asc' },
+                  include: {
+                    items: true,
+                  },
+                },
+              },
+            },
+          },
+        },
       },
     });
   },
@@ -50,6 +66,22 @@ export const dietPlanTemplateRepository = {
           orderBy: { mealOrder: 'asc' },
           include: {
             items: true,
+          },
+        },
+        cycles: {
+          orderBy: { createdAt: 'asc' },
+          include: {
+            days: {
+              orderBy: { dayNumber: 'asc' },
+              include: {
+                meals: {
+                  orderBy: { mealOrder: 'asc' },
+                  include: {
+                    items: true,
+                  },
+                },
+              },
+            },
           },
         },
       },
@@ -106,6 +138,22 @@ export const dietPlanTemplateRepository = {
           orderBy: { mealOrder: 'asc' },
           include: {
             items: true,
+          },
+        },
+        cycles: {
+          orderBy: { createdAt: 'asc' },
+          include: {
+            days: {
+              orderBy: { dayNumber: 'asc' },
+              include: {
+                meals: {
+                  orderBy: { mealOrder: 'asc' },
+                  include: {
+                    items: true,
+                  },
+                },
+              },
+            },
           },
         },
       },

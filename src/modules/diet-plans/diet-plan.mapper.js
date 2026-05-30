@@ -52,6 +52,7 @@ export function mapDietPlan(dietPlan) {
     versionNumber: dietPlan.versionNumber || 1,
     startDate: dietPlan.startDate ? dietPlan.startDate.toISOString().split('T')[0] : null,
     endDate: dietPlan.endDate ? dietPlan.endDate.toISOString().split('T')[0] : null,
+    cycleStartDate: dietPlan.cycleStartDate ? dietPlan.cycleStartDate.toISOString().split('T')[0] : null,
     status: dietPlan.status,
     createdAt: dietPlan.createdAt,
     updatedAt: dietPlan.updatedAt,
@@ -65,6 +66,25 @@ export function mapDietPlan(dietPlan) {
         }
       : null,
     meals: dietPlan.meals ? dietPlan.meals.map(mapMeal) : [],
+    cycles: dietPlan.cycles ? dietPlan.cycles.map(cycle => ({
+      id: cycle.id,
+      name: cycle.name,
+      description: cycle.description,
+      startDay: cycle.startDay,
+      days: cycle.days ? cycle.days.map(day => ({
+        id: day.id,
+        dayNumber: day.dayNumber,
+        dayLabel: day.dayLabel,
+        description: day.description,
+        isActive: day.isActive,
+        plannedCalories: day.plannedCalories,
+        plannedProtein: day.plannedProtein,
+        plannedCarbs: day.plannedCarbs,
+        plannedFat: day.plannedFat,
+        meals: day.meals ? day.meals.map(mapMeal) : [],
+      })) : [],
+    })) : [],
+    resolvedCycleDay: dietPlan.resolvedCycleDay || null,
   };
 }
 

@@ -99,6 +99,12 @@ router.get(
   asyncHandler(dietPlanController.getClientDietPlans)
 );
 
+// GET /api/v1/clients/:clientId/diet-plan-for-date - Retrieve plan resolved for a specific date
+router.get(
+  '/:clientId/diet-plan-for-date',
+  asyncHandler(dietPlanController.getDietPlanForDate)
+);
+
 // ── Client Check-Ins Sub-Routes ─────────────────────────────────────────────
 import { checkInController } from '../check-ins/check-in.controller.js';
 import {

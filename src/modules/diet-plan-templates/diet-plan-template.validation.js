@@ -112,6 +112,7 @@ export const createTemplateMealSchema = z.object({
     mealOrder: z.number({ required_error: 'Meal order is required' }).int().min(1),
     mealTime: z.string().max(50).nullable().optional(),
     notes: z.string().max(1000).nullable().optional(),
+    cycleDayId: z.string().cuid().nullable().optional(),
   }),
 });
 
@@ -124,6 +125,7 @@ export const updateTemplateMealSchema = z.object({
     mealOrder: z.number().int().min(1).optional(),
     mealTime: z.string().max(50).nullable().optional(),
     notes: z.string().max(1000).nullable().optional(),
+    cycleDayId: z.string().cuid().nullable().optional(),
   }),
 });
 

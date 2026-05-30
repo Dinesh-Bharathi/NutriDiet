@@ -237,8 +237,86 @@ export const dietPlanTemplateService = {
         },
       });
 
-      // Copy meals and meal items
-      for (const meal of plan.meals) {
+      // Copy cycles and cycle days
+      const cycles = await tx.dietPlanCycle.findMany({
+        where: { dietPlanId: plan.id },
+        include: {
+          days: {
+            include: {
+              meals: {
+                include: {
+                  items: true,
+                },
+              },
+            },
+          },
+        },
+      });
+
+      for (const cycle of cycles) {
+        const templateCycle = await tx.templateCycle.create({
+          data: {
+            name: cycle.name,
+            description: cycle.description,
+            templateId: template.id,
+          },
+        });
+
+        for (const day of cycle.days) {
+          const templateDay = await tx.templateCycleDay.create({
+            data: {
+              cycleId: templateCycle.id,
+              dayNumber: day.dayNumber,
+              dayLabel: day.dayLabel,
+              description: day.description,
+              isActive: day.isActive,
+              plannedCalories: day.plannedCalories,
+              plannedProtein: day.plannedProtein,
+              plannedCarbs: day.plannedCarbs,
+              plannedFat: day.plannedFat,
+            },
+          });
+
+          for (const meal of day.meals) {
+            const clonedMeal = await tx.dietPlanTemplateMeal.create({
+              data: {
+                name: meal.name,
+                mealOrder: meal.mealOrder,
+                mealTime: meal.mealTime,
+                notes: meal.notes,
+                templateId: template.id,
+                cycleDayId: templateDay.id,
+              },
+            });
+
+            for (const item of meal.items) {
+              await tx.dietPlanTemplateMealItem.create({
+                data: {
+                  foodName: item.foodName,
+                  foodLibraryId: item.foodLibraryId,
+                  sourceType: item.sourceType || 'CUSTOM',
+                  quantity: item.quantity,
+                  unit: item.unit,
+                  calories: item.calories,
+                  protein: item.protein,
+                  carbs: item.carbs,
+                  fat: item.fat,
+                  notes: item.notes,
+                  mealId: clonedMeal.id,
+                },
+              });
+            }
+          }
+        }
+      }
+
+      // Also, copy static meals (meals where cycleDayId is null)
+      const staticMeals = await tx.dietPlanMeal.findMany({
+        where: { dietPlanId: plan.id, cycleDayId: null },
+        include: { items: true },
+      });
+
+      for (const meal of staticMeals) {
         const clonedMeal = await tx.dietPlanTemplateMeal.create({
           data: {
             name: meal.name,
@@ -327,6 +405,7 @@ export const dietPlanTemplateService = {
           status,
           startDate: details.startDate ? new Date(details.startDate) : null,
           endDate: details.endDate ? new Date(details.endDate) : null,
+          cycleStartDate: details.cycleStartDate ? new Date(details.cycleStartDate) : (details.startDate ? new Date(details.startDate) : new Date()),
           versionNumber: 1,
           tenantId,
           clientId,
@@ -334,8 +413,87 @@ export const dietPlanTemplateService = {
         },
       });
 
-      // Copy meals and items
-      for (const meal of template.meals) {
+      // Copy template cycles and days
+      const templateCycles = await tx.templateCycle.findMany({
+        where: { templateId: template.id },
+        include: {
+          days: {
+            include: {
+              meals: {
+                include: {
+                  items: true,
+                },
+              },
+            },
+          },
+        },
+      });
+
+      for (const cycle of templateCycles) {
+        const planCycle = await tx.dietPlanCycle.create({
+          data: {
+            name: cycle.name,
+            description: cycle.description,
+            startDay: 1,
+            dietPlanId: plan.id,
+          },
+        });
+
+        for (const day of cycle.days) {
+          const planDay = await tx.dietPlanCycleDay.create({
+            data: {
+              cycleId: planCycle.id,
+              dayNumber: day.dayNumber,
+              dayLabel: day.dayLabel,
+              description: day.description,
+              isActive: day.isActive,
+              plannedCalories: day.plannedCalories,
+              plannedProtein: day.plannedProtein,
+              plannedCarbs: day.plannedCarbs,
+              plannedFat: day.plannedFat,
+            },
+          });
+
+          for (const meal of day.meals) {
+            const clonedMeal = await tx.dietPlanMeal.create({
+              data: {
+                name: meal.name,
+                mealOrder: meal.mealOrder,
+                mealTime: meal.mealTime,
+                notes: meal.notes,
+                dietPlanId: plan.id,
+                cycleDayId: planDay.id,
+              },
+            });
+
+            for (const item of meal.items) {
+              await tx.dietPlanMealItem.create({
+                data: {
+                  foodName: item.foodName,
+                  foodLibraryId: item.foodLibraryId,
+                  sourceType: item.sourceType || 'CUSTOM',
+                  quantity: item.quantity,
+                  unit: item.unit,
+                  calories: item.calories,
+                  protein: item.protein,
+                  carbs: item.carbs,
+                  fat: item.fat,
+                  notes: item.notes,
+                  mealId: clonedMeal.id,
+                },
+              });
+            }
+          }
+        }
+      }
+
+      // Also, copy static template meals (meals where cycleDayId is null)
+      const staticTemplateMeals = await tx.dietPlanTemplateMeal.findMany({
+        where: { templateId: template.id, cycleDayId: null },
+        include: { items: true },
+      });
+
+      for (const meal of staticTemplateMeals) {
         const clonedMeal = await tx.dietPlanMeal.create({
           data: {
             name: meal.name,

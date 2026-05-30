@@ -2,6 +2,7 @@
 // Diet plan HTTP adapter endpoints.
 import { dietPlanService } from './diet-plan.service.js';
 import { mapDietPlan, mapDietPlanList, mapMeal, mapMealItem } from './diet-plan.mapper.js';
+import { calendarEngineService } from '../calendar-engine/calendar-engine.service.js';
 import { sendSuccess } from '../../utils/ApiResponse.js';
 import { HTTP_STATUS } from '../../config/constants.js';
 
@@ -56,7 +57,29 @@ export const dietPlanController = {
     const tenantId = req.user.tenantId;
     const { id } = req.params;
 
-    const dietPlan = await dietPlanService.getDietPlanById(tenantId, id);
+    let dietPlan = await dietPlanService.getDietPlanById(tenantId, id);
+
+    if (req.query.date) {
+      const targetDate = new Date(req.query.date);
+      const resolution = calendarEngineService.resolveCycleDay(dietPlan, targetDate);
+      if (resolution.isCycleBased) {
+        const resolvedMeals = resolution.cycleDay ? resolution.cycleDay.meals : [];
+        dietPlan = {
+          ...dietPlan,
+          meals: resolvedMeals,
+          resolvedCycleDay: resolution.cycleDay ? {
+            id: resolution.cycleDay.id,
+            dayNumber: resolution.cycleDay.dayNumber,
+            dayLabel: resolution.cycleDay.dayLabel,
+            description: resolution.cycleDay.description,
+            plannedCalories: resolution.cycleDay.plannedCalories,
+            plannedProtein: resolution.cycleDay.plannedProtein,
+            plannedCarbs: resolution.cycleDay.plannedCarbs,
+            plannedFat: resolution.cycleDay.plannedFat,
+          } : null,
+        };
+      }
+    }
 
     return sendSuccess(
       res,
@@ -183,5 +206,23 @@ export const dietPlanController = {
     await dietPlanService.deleteMealItem(tenantId, itemId);
 
     return sendSuccess(res, HTTP_STATUS.OK, 'Meal item deleted successfully');
+  },
+
+  async getDietPlanForDate(req, res) {
+    const tenantId = req.user.tenantId;
+    const { clientId } = req.params;
+    const date = req.query.date ? new Date(req.query.date) : new Date();
+
+    const plan = await calendarEngineService.getPlanForDate(tenantId, clientId, date);
+    if (!plan) {
+      return sendSuccess(res, HTTP_STATUS.OK, 'No active plan found for this client on the specified date', null);
+    }
+
+    return sendSuccess(
+      res,
+      HTTP_STATUS.OK,
+      'Diet plan for date retrieved successfully',
+      { dietPlan: mapDietPlan(plan) }
+    );
   },
 };

@@ -331,6 +331,7 @@ model DietPlan {
   status DietPlanStatus @default(DRAFT)
 
   createdBy String
+  cycleStartDate DateTime?
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -343,6 +344,7 @@ model DietPlan {
   creator    User          @relation(fields: [createdBy], references: [id])
   meals      DietPlanMeal[]
   checkIns   ClientCheckIn[]
+  cycles     DietPlanCycle[]
 
   @@index([tenantId])
   @@index([clientId])
@@ -357,12 +359,15 @@ model DietPlanMeal {
   mealOrder  Int
   mealTime   String?
   notes      String?
+  cycleDayId String?
 
   // Relations
   dietPlan DietPlan              @relation(fields: [dietPlanId], references: [id], onDelete: Cascade)
+  cycleDay DietPlanCycleDay?     @relation(fields: [cycleDayId], references: [id], onDelete: Cascade)
   items    DietPlanMealItem[]
 
   @@index([dietPlanId])
+  @@index([cycleDayId])
   @@map("diet_plan_meals")
 }
 
@@ -457,6 +462,7 @@ model DietPlanTemplate {
   tenant         Tenant   @relation(fields: [tenantId], references: [id])
   creator        User     @relation(fields: [createdBy], references: [id])
   meals          DietPlanTemplateMeal[]
+  cycles         TemplateCycle[]
 
   @@index([tenantId])
   @@map("diet_plan_templates")
@@ -469,12 +475,15 @@ model DietPlanTemplateMeal {
   mealOrder  Int
   mealTime   String?
   notes      String?
+  cycleDayId String?
 
   // Relations
   template   DietPlanTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  cycleDay   TemplateCycleDay? @relation(fields: [cycleDayId], references: [id], onDelete: Cascade)
   items      DietPlanTemplateMealItem[]
 
   @@index([templateId])
+  @@index([cycleDayId])
   @@map("diet_plan_template_meals")
 }
 
@@ -567,5 +576,78 @@ model ClientCheckIn {
   @@index([checkInDate])
   @@index([clientId, checkInDate])
   @@map("client_check_ins")
+}
+
+model DietPlanCycle {
+  id          String   @id @default(cuid())
+  dietPlanId  String
+  name        String
+  description String?
+  startDay    Int      @default(1)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  dietPlan    DietPlan @relation(fields: [dietPlanId], references: [id], onDelete: Cascade)
+  days        DietPlanCycleDay[]
+
+  @@index([dietPlanId])
+  @@map("diet_plan_cycles")
+}
+
+model DietPlanCycleDay {
+  id              String   @id @default(cuid())
+  cycleId         String
+  dayNumber       Int
+  dayLabel        String
+  description     String?
+  isActive        Boolean  @default(true)
+  plannedCalories Int      @default(0)
+  plannedProtein  Float    @default(0)
+  plannedCarbs    Float    @default(0)
+  plannedFat      Float    @default(0)
+
+  // Relations
+  cycle      DietPlanCycle  @relation(fields: [cycleId], references: [id], onDelete: Cascade)
+  meals      DietPlanMeal[]
+
+  @@index([cycleId])
+  @@map("diet_plan_cycle_days")
+}
+
+model TemplateCycle {
+  id          String   @id @default(cuid())
+  templateId  String
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  template    DietPlanTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  days        TemplateCycleDay[]
+
+  @@index([templateId])
+  @@map("template_cycles")
+}
+
+model TemplateCycleDay {
+  id              String   @id @default(cuid())
+  cycleId         String
+  dayNumber       Int
+  dayLabel        String
+  description     String?
+  isActive        Boolean  @default(true)
+  plannedCalories Int      @default(0)
+  plannedProtein  Float    @default(0)
+  plannedCarbs    Float    @default(0)
+  plannedFat      Float    @default(0)
+
+  // Relations
+  cycle      TemplateCycle          @relation(fields: [cycleId], references: [id], onDelete: Cascade)
+  meals      DietPlanTemplateMeal[]
+
+  @@index([cycleId])
+  @@map("template_cycle_days")
 }
 

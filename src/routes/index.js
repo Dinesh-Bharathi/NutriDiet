@@ -57,6 +57,12 @@ router.use('/check-ins', checkInRouter);
 import progressRouter from '../modules/progress/progress.routes.js';
 router.use('/reviews', progressRouter);
 
+// Repeat Cycles & Template Cycles (protected)
+import cycleRouter from '../modules/diet-plans/cycle.routes.js';
+import templateCycleRouter from '../modules/diet-plan-templates/template-cycle.routes.js';
+router.use('/', cycleRouter);
+router.use('/', templateCycleRouter);
+
 // ── Foundation ping route ────────────────────────────────────────────────────
 router.get('/ping', (_req, res) => {
   res.status(200).json({
