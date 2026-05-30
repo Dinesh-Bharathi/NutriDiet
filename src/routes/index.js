@@ -60,8 +60,10 @@ router.use('/reviews', progressRouter);
 // Repeat Cycles & Template Cycles (protected)
 import cycleRouter from '../modules/diet-plans/cycle.routes.js';
 import templateCycleRouter from '../modules/diet-plan-templates/template-cycle.routes.js';
+import foodLibraryV2Router from '../modules/food-library/food-library-v2.routes.js';
 router.use('/', cycleRouter);
 router.use('/', templateCycleRouter);
+router.use('/', foodLibraryV2Router);
 
 // ── Foundation ping route ────────────────────────────────────────────────────
 router.get('/ping', (_req, res) => {

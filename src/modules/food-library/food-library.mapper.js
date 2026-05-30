@@ -16,8 +16,33 @@ export const mapFoodItem = (food) => {
     protein: food.protein,
     carbs: food.carbs,
     fat: food.fat,
+    categoryId: food.categoryId || null,
+    searchKeywords: food.searchKeywords || null,
+    commonName: food.commonName || null,
+    brandName: food.brandName || null,
+    status: food.status || 'ACTIVE',
     createdAt: food.createdAt.toISOString(),
     updatedAt: food.updatedAt.toISOString(),
+    category: food.category ? {
+      id: food.category.id,
+      name: food.category.name,
+      description: food.category.description,
+      isSystem: food.category.isSystem,
+    } : null,
+    tags: food.tagMappings ? food.tagMappings.map((m) => ({
+      id: m.tag.id,
+      name: m.tag.name,
+      description: m.tag.description,
+      isSystem: m.tag.isSystem,
+    })) : [],
+    servings: food.servings ? food.servings.map((s) => ({
+      id: s.id,
+      name: s.name,
+      grams: s.grams,
+      unitType: s.unitType,
+      isDefault: s.isDefault,
+      displayOrder: s.displayOrder,
+    })) : [],
   };
 };
 

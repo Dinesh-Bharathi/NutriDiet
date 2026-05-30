@@ -65,8 +65,17 @@ export const queryFoodSchema = z.object({
       .min(1)
       .max(PAGINATION.MAX_LIMIT)
       .default(PAGINATION.DEFAULT_LIMIT),
+    q: z.string().optional(),
+    categoryId: z.string().optional(),
+    tagIds: z.string().optional(),
+    status: z.string().optional(),
+    minCalories: z.coerce.number().optional(),
+    maxCalories: z.coerce.number().optional(),
+    minProtein: z.coerce.number().optional(),
+    maxProtein: z.coerce.number().optional(),
   }),
 });
+
 
 export const searchFoodSchema = z.object({
   query: z.object({

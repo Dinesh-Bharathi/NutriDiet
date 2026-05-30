@@ -104,6 +104,8 @@ model Tenant {
   foodLibrary FoodLibrary[]
   dietPlanTemplates DietPlanTemplate[]
   clientCheckIns ClientCheckIn[]
+  foodCategories FoodCategory[]
+  foodTags    FoodTag[]
 
   @@index([slug])
   @@index([status])
@@ -417,6 +419,11 @@ model FoodLibrary {
   protein           Float?
   carbs             Float?
   fat               Float?
+  categoryId        String?
+  searchKeywords    String?
+  commonName        String?
+  brandName         String?
+  status            FoodStatus                 @default(ACTIVE)
   createdAt         DateTime                   @default(now())
   updatedAt         DateTime                   @updatedAt
   deletedAt         DateTime?
@@ -425,9 +432,16 @@ model FoodLibrary {
   tenant            Tenant                     @relation(fields: [tenantId], references: [id])
   mealItems         DietPlanMealItem[]
   templateMealItems DietPlanTemplateMealItem[]
+  category          FoodCategory?              @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  tagMappings       FoodTagMapping[]
+  servings          FoodServing[]
+  sourceEquivalents FoodEquivalent[]           @relation("SourceEquivalent")
+  targetEquivalents FoodEquivalent[]           @relation("TargetEquivalent")
 
   @@index([tenantId])
   @@index([tenantId, foodName])
+  @@index([tenantId, categoryId])
+  @@index([tenantId, status])
   @@map("food_library")
 }
 
@@ -649,5 +663,122 @@ model TemplateCycleDay {
 
   @@index([cycleId])
   @@map("template_cycle_days")
+}
+
+enum EquivalencyType {
+  PROTEIN
+  CARB
+  FAT
+  CALORIE
+}
+
+enum FoodServingUnitType {
+  GRAM
+  CUP
+  BOWL
+  TBSP
+  TSP
+  PIECE
+  SLICE
+  SCOOP
+  SERVING
+}
+
+enum FoodStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+model FoodCategory {
+  id               String         @id @default(cuid())
+  tenantId         String
+  name             String
+  description      String?
+  isSystem         Boolean        @default(false)
+  parentCategoryId String?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  deletedAt        DateTime?
+
+  // Relations
+  tenant           Tenant         @relation(fields: [tenantId], references: [id])
+  parentCategory   FoodCategory?  @relation("CategoryHierarchy", fields: [parentCategoryId], references: [id], onDelete: SetNull)
+  children         FoodCategory[] @relation("CategoryHierarchy")
+  foods            FoodLibrary[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@map("food_categories")
+}
+
+model FoodTag {
+  id          String           @id @default(cuid())
+  tenantId    String
+  name        String
+  description String?
+  isSystem    Boolean          @default(false)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  deletedAt   DateTime?
+
+  // Relations
+  tenant      Tenant           @relation(fields: [tenantId], references: [id])
+  foodMappings FoodTagMapping[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@map("food_tags")
+}
+
+model FoodTagMapping {
+  id        String   @id @default(cuid())
+  foodId    String
+  tagId     String
+  createdAt DateTime @default(now())
+
+  // Relations
+  food FoodLibrary @relation(fields: [foodId], references: [id], onDelete: Cascade)
+  tag  FoodTag     @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@unique([foodId, tagId])
+  @@index([foodId])
+  @@index([tagId])
+  @@map("food_tag_mappings")
+}
+
+model FoodServing {
+  id           String              @id @default(cuid())
+  foodId       String
+  name         String
+  grams        Float
+  unitType     FoodServingUnitType
+  isDefault    Boolean             @default(false)
+  displayOrder Int                 @default(1)
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+
+  // Relations
+  food FoodLibrary @relation(fields: [foodId], references: [id], onDelete: Cascade)
+
+  @@index([foodId])
+  @@map("food_servings")
+}
+
+model FoodEquivalent {
+  id              String          @id @default(cuid())
+  sourceFoodId    String
+  targetFoodId    String
+  equivalencyType EquivalencyType
+  similarityScore Int             @default(100)
+  createdAt       DateTime        @default(now())
+
+  // Relations
+  sourceFood FoodLibrary @relation("SourceEquivalent", fields: [sourceFoodId], references: [id], onDelete: Cascade)
+  targetFood FoodLibrary @relation("TargetEquivalent", fields: [targetFoodId], references: [id], onDelete: Cascade)
+
+  @@unique([sourceFoodId, targetFoodId, equivalencyType])
+  @@index([sourceFoodId])
+  @@index([targetFoodId])
+  @@map("food_equivalents")
 }
 

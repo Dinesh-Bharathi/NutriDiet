@@ -26,7 +26,18 @@ export const foodLibraryController = {
       limit: req.query.limit,
     };
 
-    const result = await foodLibraryService.getFoodLibrary(tenantId, pagination);
+    const filters = {
+      query: req.query.q || undefined,
+      categoryId: req.query.categoryId || undefined,
+      tagIds: req.query.tagIds || undefined,
+      status: req.query.status || undefined,
+      minCalories: req.query.minCalories !== undefined ? Number(req.query.minCalories) : undefined,
+      maxCalories: req.query.maxCalories !== undefined ? Number(req.query.maxCalories) : undefined,
+      minProtein: req.query.minProtein !== undefined ? Number(req.query.minProtein) : undefined,
+      maxProtein: req.query.maxProtein !== undefined ? Number(req.query.maxProtein) : undefined,
+    };
+
+    const result = await foodLibraryService.searchFoodAdvanced(tenantId, filters, pagination);
 
     return sendSuccess(
       res,
@@ -38,6 +49,7 @@ export const foodLibraryController = {
       }
     );
   },
+
 
   async searchFood(req, res) {
     const tenantId = req.user.tenantId;
