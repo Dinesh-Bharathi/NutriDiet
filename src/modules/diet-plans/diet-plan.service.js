@@ -4,6 +4,7 @@ import { dietPlanRepository } from './diet-plan.repository.js';
 import { clientRepository } from '../clients/client.repository.js';
 import { assessmentRepository } from '../assessments/assessment.repository.js';
 import ApiError from '../../utils/ApiError.js';
+import prisma from '../../lib/prisma.js';
 
 // Helper to check if a plan is archived
 function checkNotArchived(dietPlan) {
@@ -184,6 +185,23 @@ export const dietPlanService = {
     // Lock archived plans
     checkNotArchived(meal.dietPlan);
 
+    // Snapshot logic
+    if (data.foodLibraryId) {
+      const food = await prisma.foodLibrary.findFirst({
+        where: { id: data.foodLibraryId, tenantId, deletedAt: null }
+      });
+      if (!food) {
+        throw ApiError.notFound('Food from Library');
+      }
+      data.foodName = data.foodName || food.foodName;
+      data.unit = data.unit || food.defaultUnit;
+      data.calories = data.calories ?? food.calories;
+      data.protein = data.protein ?? food.protein;
+      data.carbs = data.carbs ?? food.carbs;
+      data.fat = data.fat ?? food.fat;
+      data.sourceType = food.sourceType;
+    }
+
     const createdItem = await dietPlanRepository.createMealItem(mealId, data);
 
     // Auto-aggregate macros
@@ -201,6 +219,23 @@ export const dietPlanService = {
 
     // Lock archived plans
     checkNotArchived(item.meal?.dietPlan);
+
+    // Snapshot logic
+    if (data.foodLibraryId) {
+      const food = await prisma.foodLibrary.findFirst({
+        where: { id: data.foodLibraryId, tenantId, deletedAt: null }
+      });
+      if (!food) {
+        throw ApiError.notFound('Food from Library');
+      }
+      data.foodName = data.foodName || food.foodName;
+      data.unit = data.unit || food.defaultUnit;
+      data.calories = data.calories ?? food.calories;
+      data.protein = data.protein ?? food.protein;
+      data.carbs = data.carbs ?? food.carbs;
+      data.fat = data.fat ?? food.fat;
+      data.sourceType = food.sourceType;
+    }
 
     const updatedItem = await dietPlanRepository.updateMealItem(itemId, data);
 

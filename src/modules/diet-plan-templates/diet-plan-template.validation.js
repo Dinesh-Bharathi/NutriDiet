@@ -133,22 +133,30 @@ export const createTemplateMealItemSchema = z.object({
     mealId: z.string().min(1, 'Template Meal ID is required'),
   }),
   body: z.object({
-    foodName: z.string({ required_error: 'Food name is required' }).min(1).max(200),
+    foodLibraryId: z.string().nullable().optional(),
+    foodName: z.string().min(1).max(200).optional(),
     quantity: requiredFloat(0.01, 'Quantity'),
-    unit: z.string({ required_error: 'Unit is required' }).min(1).max(50),
+    unit: z.string().min(1).max(50).optional(),
     calories: optionalFloat(0, 'Calories'),
     protein: optionalFloat(0, 'Protein'),
     carbs: optionalFloat(0, 'Carbohydrates'),
     fat: optionalFloat(0, 'Fat'),
     notes: z.string().max(1000).nullable().optional(),
   }),
-});
+}).refine(
+  (data) => data.body.foodLibraryId || (data.body.foodName && data.body.unit),
+  {
+    message: 'Food name and unit are required when not selecting from Food Library',
+    path: ['body.foodName'],
+  }
+);
 
 export const updateTemplateMealItemSchema = z.object({
   params: z.object({
     itemId: z.string().min(1, 'Template Meal Item ID is required'),
   }),
   body: z.object({
+    foodLibraryId: z.string().nullable().optional(),
     foodName: z.string().min(1).max(200).optional(),
     quantity: optionalFloat(0.01, 'Quantity'),
     unit: z.string().min(1).max(50).optional(),
@@ -157,5 +165,17 @@ export const updateTemplateMealItemSchema = z.object({
     carbs: optionalFloat(0, 'Carbohydrates'),
     fat: optionalFloat(0, 'Fat'),
     notes: z.string().max(1000).nullable().optional(),
+  }),
+});
+
+export const templateMealParamSchema = z.object({
+  params: z.object({
+    mealId: z.string().min(1, 'Template Meal ID is required'),
+  }),
+});
+
+export const templateMealItemParamSchema = z.object({
+  params: z.object({
+    itemId: z.string().min(1, 'Template Meal Item ID is required'),
   }),
 });

@@ -6,6 +6,8 @@ export function mapMealItem(item) {
   return {
     id: item.id,
     mealId: item.mealId,
+    foodLibraryId: item.foodLibraryId || null,
+    sourceType: item.sourceType || 'CUSTOM',
     foodName: item.foodName,
     quantity: item.quantity,
     unit: item.unit,

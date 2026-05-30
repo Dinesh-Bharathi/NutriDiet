@@ -362,22 +362,27 @@ model DietPlanMeal {
   @@map("diet_plan_meals")
 }
 
+
 model DietPlanMealItem {
-  id        String  @id @default(cuid())
-  mealId    String
-  foodName  String
-  quantity  Float
-  unit      String
-  calories  Float?
-  protein   Float?
-  carbs     Float?
-  fat       Float?
-  notes     String?
+  id            String         @id @default(cuid())
+  mealId        String
+  foodLibraryId String?
+  foodName      String
+  sourceType    FoodSourceType @default(CUSTOM)
+  quantity      Float
+  unit          String
+  calories      Float?
+  protein       Float?
+  carbs         Float?
+  fat           Float?
+  notes         String?
 
   // Relations
-  meal DietPlanMeal @relation(fields: [mealId], references: [id], onDelete: Cascade)
+  meal        DietPlanMeal @relation(fields: [mealId], references: [id], onDelete: Cascade)
+  foodLibrary FoodLibrary? @relation(fields: [foodLibraryId], references: [id], onDelete: SetNull)
 
   @@index([mealId])
+  @@index([foodLibraryId])
   @@map("diet_plan_meal_items")
 }
 
@@ -391,24 +396,26 @@ enum FoodSourceType {
 }
 
 model FoodLibrary {
-  id              String          @id @default(cuid())
-  tenantId        String
-  foodName        String
-  sourceType      FoodSourceType  @default(CUSTOM)
-  defaultQuantity Float
-  defaultUnit     String
-  servingSize     Float
-  servingUnit     String
-  calories        Float?
-  protein         Float?
-  carbs           Float?
-  fat             Float?
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
-  deletedAt       DateTime?
+  id                String                     @id @default(cuid())
+  tenantId          String
+  foodName          String
+  sourceType        FoodSourceType             @default(CUSTOM)
+  defaultQuantity   Float
+  defaultUnit       String
+  servingSize       Float
+  servingUnit       String
+  calories          Float?
+  protein           Float?
+  carbs             Float?
+  fat               Float?
+  createdAt         DateTime                   @default(now())
+  updatedAt         DateTime                   @updatedAt
+  deletedAt         DateTime?
 
   // Relations
-  tenant          Tenant          @relation(fields: [tenantId], references: [id])
+  tenant            Tenant                     @relation(fields: [tenantId], references: [id])
+  mealItems         DietPlanMealItem[]
+  templateMealItems DietPlanTemplateMealItem[]
 
   @@index([tenantId])
   @@index([tenantId, foodName])
@@ -468,20 +475,24 @@ model DietPlanTemplateMeal {
 }
 
 model DietPlanTemplateMealItem {
-  id        String  @id @default(cuid())
-  mealId    String
-  foodName  String
-  quantity  Float
-  unit      String
-  calories  Float?
-  protein   Float?
-  carbs     Float?
-  fat       Float?
-  notes     String?
+  id            String               @id @default(cuid())
+  mealId        String
+  foodLibraryId String?
+  foodName      String
+  sourceType    FoodSourceType       @default(CUSTOM)
+  quantity      Float
+  unit          String
+  calories      Float?
+  protein       Float?
+  carbs         Float?
+  fat           Float?
+  notes         String?
 
   // Relations
-  meal      DietPlanTemplateMeal @relation(fields: [mealId], references: [id], onDelete: Cascade)
+  meal        DietPlanTemplateMeal @relation(fields: [mealId], references: [id], onDelete: Cascade)
+  foodLibrary FoodLibrary?         @relation(fields: [foodLibraryId], references: [id], onDelete: SetNull)
 
   @@index([mealId])
+  @@index([foodLibraryId])
   @@map("diet_plan_template_meal_items")
 }

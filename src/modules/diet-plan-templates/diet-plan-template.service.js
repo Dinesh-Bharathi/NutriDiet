@@ -4,6 +4,7 @@ import { dietPlanTemplateRepository } from './diet-plan-template.repository.js';
 import { dietPlanRepository } from '../diet-plans/diet-plan.repository.js';
 import { clientRepository } from '../clients/client.repository.js';
 import ApiError from '../../utils/ApiError.js';
+import prisma from '../../lib/prisma.js';
 
 // Helper to validate active plan collision
 async function checkActivePlanCollision(tenantId, clientId, planId, startDate, endDate) {
@@ -77,7 +78,18 @@ export const dietPlanTemplateService = {
       throw ApiError.notFound('Diet Plan Template');
     }
 
-    return dietPlanTemplateRepository.createMeal(templateId, data);
+    // Validate unique mealOrder within template (Refinement #1)
+    const orderConflict = template.meals.find((m) => m.mealOrder === data.mealOrder);
+    if (orderConflict) {
+      throw ApiError.badRequest(`A meal with order ${data.mealOrder} already exists in this template`);
+    }
+
+    const meal = await dietPlanTemplateRepository.createMeal(templateId, data);
+
+    // Recalculate totals on meal create
+    await dietPlanTemplateRepository.recalculateTemplateNutrition(templateId);
+
+    return meal;
   },
 
   async updateMeal(tenantId, mealId, data) {
@@ -86,7 +98,23 @@ export const dietPlanTemplateService = {
       throw ApiError.notFound('Template Meal');
     }
 
-    return dietPlanTemplateRepository.updateMeal(mealId, data);
+    // Validate unique mealOrder within template if changed (Refinement #1)
+    if (data.mealOrder !== undefined && data.mealOrder !== meal.mealOrder) {
+      const template = await dietPlanTemplateRepository.findById(tenantId, meal.templateId);
+      const orderConflict = template.meals.find(
+        (m) => m.mealOrder === data.mealOrder && m.id !== mealId
+      );
+      if (orderConflict) {
+        throw ApiError.badRequest(`A meal with order ${data.mealOrder} already exists in this template`);
+      }
+    }
+
+    const updated = await dietPlanTemplateRepository.updateMeal(mealId, data);
+
+    // Recalculate totals on Template Meal Update (Refinement #5)
+    await dietPlanTemplateRepository.recalculateTemplateNutrition(meal.templateId);
+
+    return updated;
   },
 
   async deleteMeal(tenantId, mealId) {
@@ -95,7 +123,15 @@ export const dietPlanTemplateService = {
       throw ApiError.notFound('Template Meal');
     }
 
-    await dietPlanTemplateRepository.deleteMeal(mealId);
+    // Wrap in a transaction (Refinement #2)
+    await prisma.$transaction(async (tx) => {
+      await tx.dietPlanTemplateMeal.delete({
+        where: { id: mealId },
+      });
+    });
+
+    // Recalculate totals after deletion
+    await dietPlanTemplateRepository.recalculateTemplateNutrition(meal.templateId);
   },
 
   // ─── Template Meal Item Services ───────────────────────────────────────────
@@ -103,6 +139,23 @@ export const dietPlanTemplateService = {
     const meal = await dietPlanTemplateRepository.findMealById(tenantId, mealId);
     if (!meal) {
       throw ApiError.notFound('Template Meal');
+    }
+
+    // Snapshot from Food Library if foodLibraryId is supplied (Refinement #3 & #4)
+    if (data.foodLibraryId) {
+      const food = await prisma.foodLibrary.findFirst({
+        where: { id: data.foodLibraryId, tenantId, deletedAt: null },
+      });
+      if (!food) {
+        throw ApiError.notFound('Food from Library');
+      }
+      data.foodName = data.foodName || food.foodName;
+      data.unit = data.unit || food.defaultUnit;
+      data.calories = data.calories ?? food.calories;
+      data.protein = data.protein ?? food.protein;
+      data.carbs = data.carbs ?? food.carbs;
+      data.fat = data.fat ?? food.fat;
+      data.sourceType = food.sourceType;
     }
 
     const item = await dietPlanTemplateRepository.createMealItem(mealId, data);
@@ -117,6 +170,23 @@ export const dietPlanTemplateService = {
     const item = await dietPlanTemplateRepository.findMealItemById(tenantId, itemId);
     if (!item) {
       throw ApiError.notFound('Template Meal Item');
+    }
+
+    // Snapshot from Food Library if foodLibraryId is supplied (Refinement #3 & #4)
+    if (data.foodLibraryId) {
+      const food = await prisma.foodLibrary.findFirst({
+        where: { id: data.foodLibraryId, tenantId, deletedAt: null },
+      });
+      if (!food) {
+        throw ApiError.notFound('Food from Library');
+      }
+      data.foodName = data.foodName || food.foodName;
+      data.unit = data.unit || food.defaultUnit;
+      data.calories = data.calories ?? food.calories;
+      data.protein = data.protein ?? food.protein;
+      data.carbs = data.carbs ?? food.carbs;
+      data.fat = data.fat ?? food.fat;
+      data.sourceType = food.sourceType;
     }
 
     const updated = await dietPlanTemplateRepository.updateMealItem(itemId, data);
@@ -146,47 +216,79 @@ export const dietPlanTemplateService = {
       throw ApiError.notFound('Diet Plan');
     }
 
-    const template = await dietPlanTemplateRepository.create(tenantId, creatorId, {
-      title: templateData.title,
-      description: templateData.description || plan.description,
-      goal: plan.goal,
-      dailyCalories: plan.dailyCalories,
-      proteinGrams: plan.proteinGrams,
-      carbGrams: plan.carbGrams,
-      fatGrams: plan.fatGrams,
-      totalCalories: plan.totalCalories,
-      totalProtein: plan.totalProtein,
-      totalCarbs: plan.totalCarbs,
-      totalFat: plan.totalFat,
-      isPublic: templateData.isPublic || false,
-    });
-
-    // Copy meals and meal items
-    for (const meal of plan.meals) {
-      const clonedMeal = await dietPlanTemplateRepository.createMeal(template.id, {
-        name: meal.name,
-        mealOrder: meal.mealOrder,
-        mealTime: meal.mealTime,
-        notes: meal.notes,
+    // Wrap whole cloning in a prisma transaction (Refinement #2)
+    return prisma.$transaction(async (tx) => {
+      const template = await tx.dietPlanTemplate.create({
+        data: {
+          title: templateData.title,
+          description: templateData.description || plan.description,
+          goal: plan.goal,
+          dailyCalories: plan.dailyCalories,
+          proteinGrams: plan.proteinGrams,
+          carbGrams: plan.carbGrams,
+          fatGrams: plan.fatGrams,
+          totalCalories: plan.totalCalories,
+          totalProtein: plan.totalProtein,
+          totalCarbs: plan.totalCarbs,
+          totalFat: plan.totalFat,
+          isPublic: templateData.isPublic || false,
+          tenantId,
+          createdBy: creatorId,
+        },
       });
 
-      for (const item of meal.items) {
-        await dietPlanTemplateRepository.createMealItem(clonedMeal.id, {
-          foodName: item.foodName,
-          quantity: item.quantity,
-          unit: item.unit,
-          calories: item.calories,
-          protein: item.protein,
-          carbs: item.carbs,
-          fat: item.fat,
-          notes: item.notes,
+      // Copy meals and meal items
+      for (const meal of plan.meals) {
+        const clonedMeal = await tx.dietPlanTemplateMeal.create({
+          data: {
+            name: meal.name,
+            mealOrder: meal.mealOrder,
+            mealTime: meal.mealTime,
+            notes: meal.notes,
+            templateId: template.id,
+          },
         });
+
+        for (const item of meal.items) {
+          await tx.dietPlanTemplateMealItem.create({
+            data: {
+              foodName: item.foodName,
+              foodLibraryId: item.foodLibraryId,
+              sourceType: item.sourceType || 'CUSTOM',
+              quantity: item.quantity,
+              unit: item.unit,
+              calories: item.calories,
+              protein: item.protein,
+              carbs: item.carbs,
+              fat: item.fat,
+              notes: item.notes,
+              mealId: clonedMeal.id,
+            },
+          });
+        }
       }
-    }
 
-    await dietPlanTemplateRepository.recalculateTemplateNutrition(template.id);
-
-    return dietPlanTemplateRepository.findById(tenantId, template.id);
+      // Re-read full template scope to match findById response formatting
+      return tx.dietPlanTemplate.findFirst({
+        where: { id: template.id },
+        include: {
+          creator: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              email: true,
+            },
+          },
+          meals: {
+            orderBy: { mealOrder: 'asc' },
+            include: {
+              items: true,
+            },
+          },
+        },
+      });
+    });
   },
 
   async applyTemplateToClient(tenantId, templateId, clientId, creatorId, details) {
@@ -200,57 +302,89 @@ export const dietPlanTemplateService = {
       throw ApiError.notFound('Client');
     }
 
-    // Default status to DRAFT (safer, as requested)
+    // Default status to DRAFT
     const status = details.status || 'DRAFT';
 
     if (status === 'ACTIVE') {
       await checkActivePlanCollision(tenantId, clientId, null, details.startDate, details.endDate);
     }
 
-    // Create the plan
-    const plan = await dietPlanRepository.create(tenantId, clientId, creatorId, {
-      title: template.title,
-      description: template.description,
-      goal: template.goal,
-      dailyCalories: template.dailyCalories,
-      proteinGrams: template.proteinGrams,
-      carbGrams: template.carbGrams,
-      fatGrams: template.fatGrams,
-      totalCalories: template.totalCalories,
-      totalProtein: template.totalProtein,
-      totalCarbs: template.totalCarbs,
-      totalFat: template.totalFat,
-      status,
-      startDate: details.startDate || null,
-      endDate: details.endDate || null,
-      versionNumber: 1,
-    });
-
-    // Copy meals and items
-    for (const meal of template.meals) {
-      const clonedMeal = await dietPlanRepository.createMeal(plan.id, {
-        name: meal.name,
-        mealOrder: meal.mealOrder,
-        mealTime: meal.mealTime,
-        notes: meal.notes,
+    // Wrap plan creation in transaction (Refinement #2)
+    return prisma.$transaction(async (tx) => {
+      const plan = await tx.dietPlan.create({
+        data: {
+          title: template.title,
+          description: template.description,
+          goal: template.goal,
+          dailyCalories: template.dailyCalories,
+          proteinGrams: template.proteinGrams,
+          carbGrams: template.carbGrams,
+          fatGrams: template.fatGrams,
+          totalCalories: template.totalCalories,
+          totalProtein: template.totalProtein,
+          totalCarbs: template.totalCarbs,
+          totalFat: template.totalFat,
+          status,
+          startDate: details.startDate ? new Date(details.startDate) : null,
+          endDate: details.endDate ? new Date(details.endDate) : null,
+          versionNumber: 1,
+          tenantId,
+          clientId,
+          createdBy: creatorId,
+        },
       });
 
-      for (const item of meal.items) {
-        await dietPlanRepository.createMealItem(clonedMeal.id, {
-          foodName: item.foodName,
-          quantity: item.quantity,
-          unit: item.unit,
-          calories: item.calories,
-          protein: item.protein,
-          carbs: item.carbs,
-          fat: item.fat,
-          notes: item.notes,
+      // Copy meals and items
+      for (const meal of template.meals) {
+        const clonedMeal = await tx.dietPlanMeal.create({
+          data: {
+            name: meal.name,
+            mealOrder: meal.mealOrder,
+            mealTime: meal.mealTime,
+            notes: meal.notes,
+            dietPlanId: plan.id,
+          },
         });
+
+        for (const item of meal.items) {
+          await tx.dietPlanMealItem.create({
+            data: {
+              foodName: item.foodName,
+              foodLibraryId: item.foodLibraryId,
+              sourceType: item.sourceType || 'CUSTOM',
+              quantity: item.quantity,
+              unit: item.unit,
+              calories: item.calories,
+              protein: item.protein,
+              carbs: item.carbs,
+              fat: item.fat,
+              notes: item.notes,
+              mealId: clonedMeal.id,
+            },
+          });
+        }
       }
-    }
 
-    await dietPlanRepository.recalculatePlanNutrition(plan.id);
-
-    return dietPlanRepository.findById(tenantId, plan.id);
+      // Re-read full plan scope to match findById response formatting
+      return tx.dietPlan.findFirst({
+        where: { id: plan.id },
+        include: {
+          creator: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              email: true,
+            },
+          },
+          meals: {
+            orderBy: { mealOrder: 'asc' },
+            include: {
+              items: true,
+            },
+          },
+        },
+      });
+    });
   },
 };

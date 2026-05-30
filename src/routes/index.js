@@ -44,8 +44,10 @@ import foodLibraryRouter from '../modules/food-library/food-library.routes.js';
 router.use('/food-library', foodLibraryRouter);
 
 // Diet Plan Templates routes (protected)
-import dietPlanTemplateRouter from '../modules/diet-plan-templates/diet-plan-template.routes.js';
+import dietPlanTemplateRouter, { templateMealRouter, templateMealItemRouter } from '../modules/diet-plan-templates/diet-plan-template.routes.js';
 router.use('/diet-plan-templates', dietPlanTemplateRouter);
+router.use('/template-meals', templateMealRouter);
+router.use('/template-meal-items', templateMealItemRouter);
 
 // ── Foundation ping route ────────────────────────────────────────────────────
 router.get('/ping', (_req, res) => {

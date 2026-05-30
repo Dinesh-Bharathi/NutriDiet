@@ -8,6 +8,12 @@ import {
   queryTemplatesSchema,
   templateParamSchema,
   applyTemplateSchema,
+  createTemplateMealSchema,
+  updateTemplateMealSchema,
+  templateMealParamSchema,
+  createTemplateMealItemSchema,
+  updateTemplateMealItemSchema,
+  templateMealItemParamSchema,
 } from './diet-plan-template.validation.js';
 import { validate } from '../../middlewares/validate.middleware.js';
 import { authenticate } from '../../middlewares/auth.middleware.js';
@@ -17,12 +23,16 @@ import { ROLES } from '../../config/constants.js';
 import asyncHandler from '../../utils/asyncHandler.js';
 
 const router = Router();
+const templateMealRouter = Router();
+const templateMealItemRouter = Router();
 
 // Secure all template routes
-router.use(authenticate);
-router.use(resolveTenant);
-router.use(requireMinRole(ROLES.ASSISTANT));
+const middlewares = [authenticate, resolveTenant, requireMinRole(ROLES.ASSISTANT)];
+router.use(...middlewares);
+templateMealRouter.use(...middlewares);
+templateMealItemRouter.use(...middlewares);
 
+// ─── Template Router (/diet-plan-templates) ──────────────────────────────────
 // POST /api/v1/diet-plan-templates - Create template
 router.post(
   '/',
@@ -65,4 +75,49 @@ router.post(
   asyncHandler(dietPlanTemplateController.applyTemplateToClient)
 );
 
+// POST /api/v1/diet-plan-templates/:id/meals - Create a template meal
+router.post(
+  '/:id/meals',
+  validate(createTemplateMealSchema),
+  asyncHandler(dietPlanTemplateController.createMeal)
+);
+
+// ─── Template Meal Router (/template-meals) ──────────────────────────────────
+// PATCH /api/v1/template-meals/:mealId
+templateMealRouter.patch(
+  '/:mealId',
+  validate(updateTemplateMealSchema),
+  asyncHandler(dietPlanTemplateController.updateMeal)
+);
+
+// DELETE /api/v1/template-meals/:mealId
+templateMealRouter.delete(
+  '/:mealId',
+  validate(templateMealParamSchema),
+  asyncHandler(dietPlanTemplateController.deleteMeal)
+);
+
+// POST /api/v1/template-meals/:mealId/items - Create a template meal item
+templateMealRouter.post(
+  '/:mealId/items',
+  validate(createTemplateMealItemSchema),
+  asyncHandler(dietPlanTemplateController.createMealItem)
+);
+
+// ─── Template Meal Item Router (/template-meal-items) ─────────────────────────
+// PATCH /api/v1/template-meal-items/:itemId
+templateMealItemRouter.patch(
+  '/:itemId',
+  validate(updateTemplateMealItemSchema),
+  asyncHandler(dietPlanTemplateController.updateMealItem)
+);
+
+// DELETE /api/v1/template-meal-items/:itemId
+templateMealItemRouter.delete(
+  '/:itemId',
+  validate(templateMealItemParamSchema),
+  asyncHandler(dietPlanTemplateController.deleteMealItem)
+);
+
+export { templateMealRouter, templateMealItemRouter };
 export default router;

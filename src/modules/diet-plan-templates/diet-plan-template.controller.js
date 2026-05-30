@@ -1,7 +1,7 @@
 // src/modules/diet-plan-templates/diet-plan-template.controller.js
 // Diet plan templates HTTP adapter.
 import { dietPlanTemplateService } from './diet-plan-template.service.js';
-import { mapTemplate, mapTemplateList } from './diet-plan-template.mapper.js';
+import { mapTemplate, mapTemplateList, mapTemplateMeal, mapTemplateMealItem } from './diet-plan-template.mapper.js';
 import { mapDietPlan } from '../diet-plans/diet-plan.mapper.js';
 import { sendSuccess } from '../../utils/ApiResponse.js';
 import { HTTP_STATUS } from '../../config/constants.js';
@@ -118,5 +118,81 @@ export const dietPlanTemplateController = {
       'Template applied to client successfully',
       { dietPlan: mapDietPlan(plan) }
     );
+  },
+
+  // ─── Template Meal Controllers ─────────────────────────────────────────────
+  async createMeal(req, res) {
+    const tenantId = req.user.tenantId;
+    const { id } = req.params; // Template ID
+
+    const meal = await dietPlanTemplateService.createMeal(tenantId, id, req.body);
+
+    return sendSuccess(
+      res,
+      HTTP_STATUS.CREATED,
+      'Template meal created successfully',
+      { meal: mapTemplateMeal(meal) }
+    );
+  },
+
+  async updateMeal(req, res) {
+    const tenantId = req.user.tenantId;
+    const { mealId } = req.params;
+
+    const meal = await dietPlanTemplateService.updateMeal(tenantId, mealId, req.body);
+
+    return sendSuccess(
+      res,
+      HTTP_STATUS.OK,
+      'Template meal updated successfully',
+      { meal: mapTemplateMeal(meal) }
+    );
+  },
+
+  async deleteMeal(req, res) {
+    const tenantId = req.user.tenantId;
+    const { mealId } = req.params;
+
+    await dietPlanTemplateService.deleteMeal(tenantId, mealId);
+
+    return sendSuccess(res, HTTP_STATUS.OK, 'Template meal deleted successfully');
+  },
+
+  // ─── Template Meal Item Controllers ────────────────────────────────────────
+  async createMealItem(req, res) {
+    const tenantId = req.user.tenantId;
+    const { mealId } = req.params;
+
+    const item = await dietPlanTemplateService.createMealItem(tenantId, mealId, req.body);
+
+    return sendSuccess(
+      res,
+      HTTP_STATUS.CREATED,
+      'Template meal item created successfully',
+      { item: mapTemplateMealItem(item) }
+    );
+  },
+
+  async updateMealItem(req, res) {
+    const tenantId = req.user.tenantId;
+    const { itemId } = req.params;
+
+    const item = await dietPlanTemplateService.updateMealItem(tenantId, itemId, req.body);
+
+    return sendSuccess(
+      res,
+      HTTP_STATUS.OK,
+      'Template meal item updated successfully',
+      { item: mapTemplateMealItem(item) }
+    );
+  },
+
+  async deleteMealItem(req, res) {
+    const tenantId = req.user.tenantId;
+    const { itemId } = req.params;
+
+    await dietPlanTemplateService.deleteMealItem(tenantId, itemId);
+
+    return sendSuccess(res, HTTP_STATUS.OK, 'Template meal item deleted successfully');
   },
 };

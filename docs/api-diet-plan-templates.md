@@ -103,7 +103,77 @@ Practitioners can build, customize, and clone reusable diet templates.
 ```
 
 ### 4. Other Standard CRUD Endpoints
-* `GET /api/v1/diet-plan-templates`
-* `GET /api/v1/diet-plan-templates/:id`
-* `PATCH /api/v1/diet-plan-templates/:id`
-* `DELETE /api/v1/diet-plan-templates/:id`
+* `GET /api/v1/diet-plan-templates` - List templates with pagination.
+* `GET /api/v1/diet-plan-templates/:id` - Get template details (with fully hydrated nested meals and meal items).
+* `PATCH /api/v1/diet-plan-templates/:id` - Update template details.
+* `DELETE /api/v1/diet-plan-templates/:id` - Soft delete template.
+
+---
+
+## Template Meal and Item Endpoints
+
+### 5. Create Template Meal
+`POST /api/v1/diet-plan-templates/:id/meals`
+
+Creates a new meal inside a template. Enforces unique `mealOrder` values within the same template.
+
+**Request Body:**
+```json
+{
+  "name": "BREAKFAST",
+  "mealOrder": 1,
+  "mealTime": "08:00 AM",
+  "notes": "Include warm liquids first"
+}
+```
+
+### 6. Update Template Meal
+`PATCH /api/v1/template-meals/:mealId`
+
+Updates template meal parameters (e.g. `mealOrder` or `name`). Enforces uniqueness on `mealOrder` if changed.
+
+### 7. Delete Template Meal
+`DELETE /api/v1/template-meals/:mealId`
+
+Deletes a template meal and all its items cascaded in a transaction. Recalculates total template nutrition.
+
+### 8. Create Template Meal Item (with optional Food Library Snapshotting)
+`POST /api/v1/template-meals/:mealId/items`
+
+Adds an item to a template meal. Supports optional `foodLibraryId` association. When `foodLibraryId` is supplied:
+1. Snapshot values (`foodName`, `quantity`, `unit`, `calories`, `protein`, `carbs`, `fat`, `sourceType`) are retrieved from the Food Library.
+2. If `foodName` or `unit` are omitted in the request body, they default to those in the library.
+3. Automatically triggers template nutrition auto-aggregation.
+
+**Request Body Example (Using Food Library):**
+```json
+{
+  "foodLibraryId": "cmprso1rc0005u2bep29p9bsl",
+  "quantity": 100,
+  "unit": "grams",
+  "notes": "Enjoy with unsweetened almond milk"
+}
+```
+
+**Request Body Example (Custom Food Item):**
+```json
+{
+  "foodName": "Fresh Strawberry",
+  "quantity": 150,
+  "unit": "grams",
+  "calories": 48,
+  "protein": 1,
+  "carbs": 11,
+  "fat": 0.4
+}
+```
+
+### 9. Update Template Meal Item
+`PATCH /api/v1/template-meal-items/:itemId`
+
+Updates a meal item's details. Triggers template nutrition auto-aggregation.
+
+### 10. Delete Template Meal Item
+`DELETE /api/v1/template-meal-items/:itemId`
+
+Deletes a template meal item. Triggers template nutrition auto-aggregation.
