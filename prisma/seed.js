@@ -1,121 +1,59 @@
 // prisma/seed.js
-// ─────────────────────────────────────────────────────────────────────────────
-// Database seed script.
-// Run with: npm run db:seed
-//
-// Creates a demo tenant and an OWNER user for local development.
-// DO NOT run against production databases.
-// ─────────────────────────────────────────────────────────────────────────────
-import { PrismaClient } from "@prisma/client";
-import argon2 from "argon2";
-
-const prisma = new PrismaClient();
+import { clearDatabase } from './seed/clear-database.js';
+import { seedTenants } from './seed/seed-tenants.js';
+import { seedUsers } from './seed/seed-users.js';
+import { seedFoodLibrary } from './seed/seed-food-library.js';
+import { seedClients } from './seed/seed-clients.js';
+import { seedAssessments } from './seed/seed-assessments.js';
+import { seedTemplates } from './seed/seed-templates.js';
+import { seedDietPlans } from './seed/seed-diet-plans.js';
+import { seedCheckIns } from './seed/seed-checkins.js';
+import prisma from '../src/lib/prisma.js';
 
 async function main() {
-  console.log("🌱 Starting database seed...");
+  console.log('=== STARTING DATABASE SEED ENGINE ===\n');
 
-  // ── Demo Tenant ────────────────────────────────────────────────────────────
-  const tenant = await prisma.tenant.upsert({
-    where: { slug: "demo-clinic" },
-    update: {},
-    create: {
-      name: "Demo Wellness Clinic",
-      slug: "demo-clinic",
-      plan: "PROFESSIONAL",
-      status: "ACTIVE",
-      email: "admin@demo-clinic.com",
-      phone: "+1-555-000-0000",
-    },
-  });
+  // 1. Clear database
+  await clearDatabase();
+  console.log('');
 
-  console.log(`✅ Tenant created: ${tenant.name} (${tenant.id})`);
+  // 2. Tenants
+  const tenants = await seedTenants();
+  console.log('');
 
-  // ── Owner User ─────────────────────────────────────────────────────────────
-  const passwordHash = await argon2.hash('Admin@123456', {
-    type: argon2.argon2id, memoryCost: 65536, timeCost: 3, parallelism: 4,
-  });
+  // 3. Users
+  const users = await seedUsers(tenants);
+  console.log('');
 
-  const owner = await prisma.user.upsert({
-    where: {
-      tenantId_email: {
-        tenantId: tenant.id,
-        email: "owner@demo-clinic.com",
-      },
-    },
-    update: {},
-    create: {
-      tenantId: tenant.id,
-      email: "owner@demo-clinic.com",
-      passwordHash,
-      firstName: "Demo",
-      lastName: "Owner",
-      role: "OWNER",
-      status: "ACTIVE",
-      emailVerifiedAt: new Date(),
-    },
-  });
+  // 4. Food Library
+  const foodLibraryResults = await seedFoodLibrary(tenants);
+  console.log('');
 
-  console.log(`✅ Owner user created: ${owner.email} (${owner.id})`);
+  // 5. Clients
+  const clients = await seedClients(tenants, users);
+  console.log('');
 
-  // ── Demo Dietitian ─────────────────────────────────────────────────────────
-  const dietitianHash = await argon2.hash('Dietitian@123', {
-    type: argon2.argon2id, memoryCost: 65536, timeCost: 3, parallelism: 4,
-  });
+  // 6. Assessments
+  await seedAssessments(tenants, users, clients);
+  console.log('');
 
-  const dietitian = await prisma.user.upsert({
-    where: {
-      tenantId_email: {
-        tenantId: tenant.id,
-        email: "dietitian@demo-clinic.com",
-      },
-    },
-    update: {},
-    create: {
-      tenantId: tenant.id,
-      email: "dietitian@demo-clinic.com",
-      passwordHash: dietitianHash,
-      firstName: "Sarah",
-      lastName: "Mitchell",
-      role: "DIETITIAN",
-      status: "ACTIVE",
-      emailVerifiedAt: new Date(),
-    },
-  });
+  // 7. Diet Plan Templates
+  await seedTemplates(tenants, users, foodLibraryResults);
+  console.log('');
 
-  console.log(
-    `✅ Dietitian user created: ${dietitian.email} (${dietitian.id})`,
-  );
+  // 8. Active Diet Plans
+  const dietPlans = await seedDietPlans(tenants, users, clients, foodLibraryResults);
+  console.log('');
 
-  // ── Demo Client ────────────────────────────────────────────────────────────
-  const client = await prisma.client.upsert({
-    where: { id: "seed-client-001" },
-    update: {},
-    create: {
-      id: "seed-client-001",
-      tenantId: tenant.id,
-      dietitianId: dietitian.id,
-      firstName: "Alex",
-      lastName: "Thompson",
-      email: "alex@example.com",
-      phone: "+1-555-123-4567",
-      gender: "MALE",
-      dateOfBirth: new Date("1990-03-15"),
-    },
-  });
+  // 9. Client Check-Ins (Progress Progression Data)
+  await seedCheckIns(tenants, users, clients, dietPlans);
 
-  console.log(
-    `✅ Demo client created: ${client.firstName} ${client.lastName} (${client.id})`,
-  );
-
-  console.log("\n🎉 Seed complete!");
-  console.log("\n📋 Credentials:");
-  console.log(`   Owner:     owner@demo-clinic.com / Admin@123456`);
-  console.log(`   Dietitian: dietitian@demo-clinic.com / Dietitian@123`);
+  console.log('\n=== DATABASE SEED COMPLETED SUCCESSFULLY ===');
 }
 
 main()
-  .catch((err) => {
-    console.error("❌ Seed failed:", err);
+  .catch((e) => {
+    console.error('Seed execution failed:', e);
     process.exit(1);
   })
   .finally(async () => {
