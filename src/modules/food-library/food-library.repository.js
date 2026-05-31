@@ -4,13 +4,37 @@ import prisma from '../../lib/prisma.js';
 
 export const foodLibraryRepository = {
   async create(tenantId, data) {
-    const { sourceType, ...rest } = data;
-    return prisma.foodLibrary.create({
-      data: {
-        ...rest,
-        isSystem: sourceType === 'SYSTEM',
-        tenantId,
-      },
+    const { sourceType, tagIds, ...rest } = data;
+    return prisma.$transaction(async (tx) => {
+      const food = await tx.foodLibrary.create({
+        data: {
+          ...rest,
+          isSystem: sourceType === 'SYSTEM',
+          tenantId,
+        },
+      });
+
+      if (tagIds && tagIds.length > 0) {
+        await tx.foodTagMapping.createMany({
+          data: tagIds.map((tagId) => ({
+            foodId: food.id,
+            tagId,
+          })),
+        });
+      }
+
+      return tx.foodLibrary.findUnique({
+        where: { id: food.id },
+        include: {
+          category: true,
+          tagMappings: {
+            include: { tag: true },
+          },
+          servings: {
+            orderBy: { displayOrder: 'asc' },
+          },
+        },
+      });
     });
   },
 

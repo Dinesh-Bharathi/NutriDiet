@@ -31,6 +31,11 @@ export const createFoodSchema = z.object({
     protein: optionalFloat(0, 'Protein'),
     carbs: optionalFloat(0, 'Carbohydrates'),
     fat: optionalFloat(0, 'Fat'),
+    commonName: z.string().max(200).nullable().optional(),
+    brandName: z.string().max(200).nullable().optional(),
+    searchKeywords: z.string().max(500).nullable().optional(),
+    categoryId: z.string().nullable().optional(),
+    tagIds: z.array(z.string()).optional(),
   }),
 });
 
@@ -49,6 +54,11 @@ export const updateFoodSchema = z.object({
     protein: optionalFloat(0, 'Protein'),
     carbs: optionalFloat(0, 'Carbohydrates'),
     fat: optionalFloat(0, 'Fat'),
+    commonName: z.string().max(200).nullable().optional(),
+    brandName: z.string().max(200).nullable().optional(),
+    searchKeywords: z.string().max(500).nullable().optional(),
+    categoryId: z.string().nullable().optional(),
+    tagIds: z.array(z.string()).optional(),
   }),
 });
 
