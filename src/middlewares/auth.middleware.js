@@ -71,8 +71,6 @@ export async function authenticate(req, _res, next) {
       return next(ApiError.unauthorized("Invalid token type"));
     }
 
-    console.log("decoded", decoded);
-
     // ── Redis jti blocklist check ─────────────────────────────────────────────
     // logout() stores the jti in Redis with TTL = token's remaining lifetime.
     // This gives us immediate access token invalidation without a DB query.
@@ -86,11 +84,16 @@ export async function authenticate(req, _res, next) {
 
           if (blocklisted) {
             return next(
-              ApiError.unauthorized("Token has been revoked. Please log in again."),
+              ApiError.unauthorized(
+                "Token has been revoked. Please log in again.",
+              ),
             );
           }
         } catch (err) {
-          logger.warn("Redis blocklist check failed, skipping", { error: err.message, jti: decoded.jti });
+          logger.warn("Redis blocklist check failed, skipping", {
+            error: err.message,
+            jti: decoded.jti,
+          });
         }
       }
     }

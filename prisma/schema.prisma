@@ -116,6 +116,7 @@ model Tenant {
   clientCheckIns ClientCheckIn[]
   foodCategories FoodCategory[]
   foodTags    FoodTag[]
+  mealSwapHistories MealSwapHistory[]
 
   @@index([slug])
   @@index([status])
@@ -158,6 +159,7 @@ model User {
   dietPlans         DietPlan[]
   dietPlanTemplates DietPlanTemplate[]
   reviewedCheckIns ClientCheckIn[]
+  mealSwapHistories MealSwapHistory[]
 
   // Compound unique: email must be unique within a tenant (not globally)
   @@unique([tenantId, email])
@@ -447,6 +449,8 @@ model FoodLibrary {
   servings          FoodServing[]
   sourceEquivalents FoodEquivalent[]           @relation("SourceEquivalent")
   targetEquivalents FoodEquivalent[]           @relation("TargetEquivalent")
+  originalFoodSwaps MealSwapHistory[]          @relation("OriginalFoodSwaps")
+  targetFoodSwaps   MealSwapHistory[]          @relation("TargetFoodSwaps")
 
   @@index([tenantId])
   @@index([tenantId, foodName])
@@ -791,4 +795,48 @@ model FoodEquivalent {
   @@index([targetFoodId])
   @@map("food_equivalents")
 }
+
+enum SwapStrategy {
+  BALANCED_MATCH
+  PROTEIN_MATCH
+  CARB_MATCH
+  FAT_MATCH
+  CALORIE_MATCH
+}
+
+enum SwapScope {
+  SINGLE_ITEM
+  DIET_PLAN
+  TEMPLATE
+  CYCLE
+  CYCLE_DAY
+}
+
+model MealSwapHistory {
+  id             String       @id @default(cuid())
+  tenantId       String
+  mealItemId     String?
+  originalFoodId String
+  targetFoodId   String
+  swapStrategy   SwapStrategy
+  scope          SwapScope
+  matchScore     Int?
+  quantityBefore Float
+  quantityAfter  Float
+  performedBy    String
+  createdAt      DateTime     @default(now())
+
+  // Relations
+  tenant         Tenant       @relation(fields: [tenantId], references: [id])
+  user           User         @relation(fields: [performedBy], references: [id])
+  originalFood   FoodLibrary  @relation("OriginalFoodSwaps", fields: [originalFoodId], references: [id])
+  targetFood     FoodLibrary  @relation("TargetFoodSwaps", fields: [targetFoodId], references: [id])
+
+  @@index([tenantId])
+  @@index([performedBy])
+  @@index([originalFoodId])
+  @@index([targetFoodId])
+  @@map("meal_swap_histories")
+}
+
 
