@@ -4,6 +4,7 @@ import { clinicalProfileService } from './clinical-profile.service.js';
 import {
   mapAnthropometricRecord,
   mapAssessmentSnapshot,
+  mapAssessmentSnapshotHistoryItem,
   mapClinicalProfile,
   mapGoalProfile,
   mapLabMarkerDefinition,
@@ -243,6 +244,48 @@ export const clinicalProfileController = {
     const snapshot = await clinicalProfileService.generateSnapshot(tenantId, req.params.clientId, userId);
 
     return sendSuccess(res, HTTP_STATUS.CREATED, 'Assessment snapshot generated successfully', {
+      assessmentSnapshot: mapAssessmentSnapshot(snapshot),
+    });
+  },
+
+  async getSnapshotHistory(req, res) {
+    const { tenantId, userId } = userContext(req);
+    const snapshots = await clinicalProfileService.getSnapshotHistory(
+      tenantId,
+      req.params.clientId,
+      userId
+    );
+
+    return sendSuccess(res, HTTP_STATUS.OK, 'Assessment snapshot history retrieved successfully', {
+      snapshots: snapshots.map(mapAssessmentSnapshotHistoryItem),
+    });
+  },
+
+  async compareSnapshots(req, res) {
+    const { tenantId, userId } = userContext(req);
+    const comparison = await clinicalProfileService.compareSnapshots(
+      tenantId,
+      req.params.clientId,
+      req.query.baselineSnapshotId,
+      req.query.comparisonSnapshotId,
+      userId
+    );
+
+    return sendSuccess(res, HTTP_STATUS.OK, 'Assessment snapshot comparison retrieved successfully', {
+      snapshotComparison: comparison,
+    });
+  },
+
+  async getSnapshotById(req, res) {
+    const { tenantId, userId } = userContext(req);
+    const snapshot = await clinicalProfileService.getSnapshotById(
+      tenantId,
+      req.params.clientId,
+      req.params.snapshotId,
+      userId
+    );
+
+    return sendSuccess(res, HTTP_STATUS.OK, 'Assessment snapshot retrieved successfully', {
       assessmentSnapshot: mapAssessmentSnapshot(snapshot),
     });
   },

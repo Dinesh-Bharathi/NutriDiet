@@ -17,6 +17,9 @@ import {
   upsertClinicalProfileSchema,
   upsertLifestyleProfileSchema,
   upsertMedicalHistorySchema,
+  snapshotHistorySchema,
+  snapshotByIdSchema,
+  compareSnapshotsSchema,
 } from './clinical-profile.validation.js';
 
 const router = Router();
@@ -131,6 +134,24 @@ router.post(
   '/clients/:clientId/clinical-profile/snapshot',
   validate(clinicalProfileClientSchema),
   asyncHandler(clinicalProfileController.generateSnapshot)
+);
+
+router.get(
+  '/clients/:clientId/snapshots',
+  validate(snapshotHistorySchema),
+  asyncHandler(clinicalProfileController.getSnapshotHistory)
+);
+
+router.get(
+  '/clients/:clientId/snapshots/compare',
+  validate(compareSnapshotsSchema),
+  asyncHandler(clinicalProfileController.compareSnapshots)
+);
+
+router.get(
+  '/clients/:clientId/snapshots/:snapshotId',
+  validate(snapshotByIdSchema),
+  asyncHandler(clinicalProfileController.getSnapshotById)
 );
 
 router.get(

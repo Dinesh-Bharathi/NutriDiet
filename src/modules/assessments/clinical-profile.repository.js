@@ -366,6 +366,29 @@ export const clinicalProfileRepository = {
     });
   },
 
+  async findSnapshotsByClient(tenantId, clientId) {
+    return prisma.assessmentSnapshot.findMany({
+      where: { tenantId, clientId },
+      orderBy: [{ version: 'desc' }],
+      include: {
+        generatedBy: {
+          select: { id: true, firstName: true, lastName: true, email: true },
+        },
+      },
+    });
+  },
+
+  async findSnapshotById(tenantId, clientId, snapshotId) {
+    return prisma.assessmentSnapshot.findFirst({
+      where: { tenantId, clientId, id: snapshotId },
+      include: {
+        generatedBy: {
+          select: { id: true, firstName: true, lastName: true, email: true },
+        },
+      },
+    });
+  },
+
   async getLatestSnapshot(tenantId, profileId) {
     return prisma.assessmentSnapshot.findFirst({
       where: { tenantId, profileId },

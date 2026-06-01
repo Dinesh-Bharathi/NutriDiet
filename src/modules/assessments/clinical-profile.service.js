@@ -61,6 +61,208 @@ function buildLegacySummary(snapshotParts) {
   };
 }
 
+function getObjectFieldDelta(before, after) {
+  const delta = typeof before === 'number' && typeof after === 'number' ? Math.round((after - before) * 100) / 100 : null;
+  return {
+    before: before ?? null,
+    after: after ?? null,
+    delta,
+  };
+}
+
+function mapItemsById(items = []) {
+  return new Map(items.map((item) => [item.id, item]));
+}
+
+function compareSectionStatuses(beforeStatuses = [], afterStatuses = []) {
+  const beforeMap = new Map(beforeStatuses.map((status) => [status.section, status]));
+  const afterMap = new Map(afterStatuses.map((status) => [status.section, status]));
+  const sections = Array.from(new Set([...beforeMap.keys(), ...afterMap.keys()]));
+
+  return sections.map((section) => {
+    const before = beforeMap.get(section);
+    const after = afterMap.get(section);
+
+    return {
+      section,
+      before: before?.status ?? null,
+      after: after?.status ?? null,
+      changed: before?.status !== after?.status,
+    };
+  });
+}
+
+function compareGoals(beforeGoals = [], afterGoals = []) {
+  const beforeMap = mapItemsById(beforeGoals);
+  const afterMap = mapItemsById(afterGoals);
+
+  const added = afterGoals.filter((goal) => !beforeMap.has(goal.id));
+  const removed = beforeGoals.filter((goal) => !afterMap.has(goal.id));
+  const completed = afterGoals.filter(
+    (goal) => beforeMap.has(goal.id) && beforeMap.get(goal.id).status !== 'COMPLETED' && goal.status === 'COMPLETED'
+  );
+  const changed = afterGoals
+    .filter((goal) => {
+      if (!beforeMap.has(goal.id)) return false;
+      const previous = beforeMap.get(goal.id);
+      return (
+        previous.goalType !== goal.goalType ||
+        previous.status !== goal.status ||
+        previous.targetWeightKg !== goal.targetWeightKg ||
+        String(previous.targetDate) !== String(goal.targetDate) ||
+        previous.notes !== goal.notes ||
+        previous.versionNumber !== goal.versionNumber ||
+        String(previous.startedAt) !== String(goal.startedAt) ||
+        String(previous.endedAt) !== String(goal.endedAt)
+      );
+    })
+    .map((goal) => ({ before: beforeMap.get(goal.id), after: goal }));
+
+  return {
+    added,
+    removed,
+    completed,
+    changed,
+  };
+}
+
+function compareLabs(beforeLabs = [], afterLabs = []) {
+  const beforeMap = mapItemsById(beforeLabs);
+  const afterMap = mapItemsById(afterLabs);
+
+  const added = afterLabs.filter((lab) => !beforeMap.has(lab.id));
+  const removed = beforeLabs.filter((lab) => !afterMap.has(lab.id));
+  const valueChanges = afterLabs
+    .filter((lab) => {
+      const previous = beforeMap.get(lab.id);
+      if (!previous) return false;
+      return (
+        previous.valueNumeric !== lab.valueNumeric ||
+        previous.valueText !== lab.valueText ||
+        previous.unit !== lab.unit ||
+        previous.markerKey !== lab.markerKey ||
+        previous.markerName !== lab.markerName
+      );
+    })
+    .map((lab) => {
+      const previous = beforeMap.get(lab.id);
+      return {
+        id: lab.id,
+        markerKey: lab.markerKey,
+        markerName: lab.markerName,
+        before: {
+          valueNumeric: previous.valueNumeric ?? null,
+          valueText: previous.valueText ?? null,
+          unit: previous.unit ?? null,
+          severity: previous.severity ?? null,
+          resultDate: previous.resultDate ?? null,
+        },
+        after: {
+          valueNumeric: lab.valueNumeric ?? null,
+          valueText: lab.valueText ?? null,
+          unit: lab.unit ?? null,
+          severity: lab.severity ?? null,
+          resultDate: lab.resultDate ?? null,
+        },
+        numericDelta:
+          typeof previous.valueNumeric === 'number' && typeof lab.valueNumeric === 'number'
+            ? Math.round((lab.valueNumeric - previous.valueNumeric) * 100) / 100
+            : null,
+      };
+    });
+  const severityChanges = afterLabs
+    .filter((lab) => {
+      const previous = beforeMap.get(lab.id);
+      return previous && previous.severity !== lab.severity;
+    })
+    .map((lab) => ({
+      id: lab.id,
+      markerKey: lab.markerKey,
+      markerName: lab.markerName,
+      before: beforeMap.get(lab.id).severity,
+      after: lab.severity,
+    }));
+
+  return {
+    added,
+    removed,
+    valueChanges,
+    severityChanges,
+  };
+}
+
+function compareRiskFlags(beforeFlags = [], afterFlags = []) {
+  const beforeMap = mapItemsById(beforeFlags);
+  const afterMap = mapItemsById(afterFlags);
+
+  const added = afterFlags.filter((flag) => !beforeMap.has(flag.id));
+  const resolved = afterFlags.filter((flag) => {
+    const previous = beforeMap.get(flag.id);
+    return previous && previous.status !== 'RESOLVED' && flag.status === 'RESOLVED';
+  });
+  const statusChanges = afterFlags
+    .filter((flag) => {
+      const previous = beforeMap.get(flag.id);
+      return previous && previous.status !== flag.status;
+    })
+    .map((flag) => ({
+      before: beforeMap.get(flag.id).status,
+      after: flag.status,
+      flag,
+    }));
+
+  return {
+    added,
+    resolved,
+    statusChanges,
+  };
+}
+
+function compareMedicalHistoryCategory(beforeItems = [], afterItems = []) {
+  const beforeMap = mapItemsById(beforeItems);
+  const afterMap = mapItemsById(afterItems);
+
+  return {
+    added: afterItems.filter((item) => !beforeMap.has(item.id)),
+    removed: beforeItems.filter((item) => !afterMap.has(item.id)),
+  };
+}
+
+function buildSnapshotComparison(beforeSnapshot = {}, afterSnapshot = {}) {
+  return {
+    anthropometrics: {
+      heightCm: getObjectFieldDelta(beforeSnapshot.anthropometrics?.heightCm ?? null, afterSnapshot.anthropometrics?.heightCm ?? null),
+      weightKg: getObjectFieldDelta(beforeSnapshot.anthropometrics?.weightKg ?? null, afterSnapshot.anthropometrics?.weightKg ?? null),
+      bmi: getObjectFieldDelta(beforeSnapshot.anthropometrics?.bmi ?? null, afterSnapshot.anthropometrics?.bmi ?? null),
+      bodyFatPercent: getObjectFieldDelta(
+        beforeSnapshot.anthropometrics?.bodyFatPercent ?? null,
+        afterSnapshot.anthropometrics?.bodyFatPercent ?? null
+      ),
+      leanMassKg: getObjectFieldDelta(
+        beforeSnapshot.anthropometrics?.leanMassKg ?? null,
+        afterSnapshot.anthropometrics?.leanMassKg ?? null
+      ),
+      waistCm: getObjectFieldDelta(beforeSnapshot.anthropometrics?.waistCm ?? null, afterSnapshot.anthropometrics?.waistCm ?? null),
+      hipCm: getObjectFieldDelta(beforeSnapshot.anthropometrics?.hipCm ?? null, afterSnapshot.anthropometrics?.hipCm ?? null),
+      chestCm: getObjectFieldDelta(beforeSnapshot.anthropometrics?.chestCm ?? null, afterSnapshot.anthropometrics?.chestCm ?? null),
+      armCm: getObjectFieldDelta(beforeSnapshot.anthropometrics?.armCm ?? null, afterSnapshot.anthropometrics?.armCm ?? null),
+      thighCm: getObjectFieldDelta(beforeSnapshot.anthropometrics?.thighCm ?? null, afterSnapshot.anthropometrics?.thighCm ?? null),
+      neckCm: getObjectFieldDelta(beforeSnapshot.anthropometrics?.neckCm ?? null, afterSnapshot.anthropometrics?.neckCm ?? null),
+    },
+    sectionStatuses: compareSectionStatuses(beforeSnapshot.sectionStatuses, afterSnapshot.sectionStatuses),
+    goals: compareGoals(beforeSnapshot.goals, afterSnapshot.goals),
+    labs: compareLabs(beforeSnapshot.labs, afterSnapshot.labs),
+    riskFlags: compareRiskFlags(beforeSnapshot.riskFlags, afterSnapshot.riskFlags),
+    medicalHistory: {
+      conditions: compareMedicalHistoryCategory(beforeSnapshot.medicalHistory?.conditions, afterSnapshot.medicalHistory?.conditions),
+      allergies: compareMedicalHistoryCategory(beforeSnapshot.medicalHistory?.allergies, afterSnapshot.medicalHistory?.allergies),
+      medications: compareMedicalHistoryCategory(beforeSnapshot.medicalHistory?.medications, afterSnapshot.medicalHistory?.medications),
+      supplements: compareMedicalHistoryCategory(beforeSnapshot.medicalHistory?.supplements, afterSnapshot.medicalHistory?.supplements),
+      digestiveIssues: compareMedicalHistoryCategory(beforeSnapshot.medicalHistory?.digestiveIssues, afterSnapshot.medicalHistory?.digestiveIssues),
+    },
+  };
+}
+
 function mapMedicalInput(data) {
   return {
     assessmentId: data.assessmentId,
@@ -122,6 +324,44 @@ export const clinicalProfileService = {
       ...parts,
       legacySummary: buildLegacySummary(parts),
     };
+  },
+
+  async getSnapshotHistory(tenantId, clientId, userId) {
+    const profile = await this.ensureProfile(tenantId, clientId, userId);
+    return clinicalProfileRepository.findSnapshotsByClient(tenantId, profile.clientId);
+  },
+
+  async getSnapshotById(tenantId, clientId, snapshotId, userId) {
+    const profile = await this.ensureProfile(tenantId, clientId, userId);
+    const snapshot = await clinicalProfileRepository.findSnapshotById(
+      tenantId,
+      profile.clientId,
+      snapshotId
+    );
+
+    if (!snapshot) {
+      throw ApiError.notFound('Assessment snapshot');
+    }
+
+    return snapshot;
+  },
+
+  async compareSnapshots(tenantId, clientId, baselineSnapshotId, comparisonSnapshotId, userId) {
+    const profile = await this.ensureProfile(tenantId, clientId, userId);
+    if (baselineSnapshotId === comparisonSnapshotId) {
+      throw ApiError.badRequest('Baseline and comparison snapshot IDs must differ');
+    }
+
+    const [baselineSnapshot, comparisonSnapshot] = await Promise.all([
+      clinicalProfileRepository.findSnapshotById(tenantId, profile.clientId, baselineSnapshotId),
+      clinicalProfileRepository.findSnapshotById(tenantId, profile.clientId, comparisonSnapshotId),
+    ]);
+
+    if (!baselineSnapshot || !comparisonSnapshot) {
+      throw ApiError.notFound('Assessment snapshot');
+    }
+
+    return buildSnapshotComparison(baselineSnapshot.snapshot, comparisonSnapshot.snapshot);
   },
 
   async updateSectionStatus(tenantId, clientId, userId, section, data) {

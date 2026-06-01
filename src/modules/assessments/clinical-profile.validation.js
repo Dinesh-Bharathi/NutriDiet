@@ -52,6 +52,24 @@ export const upsertClinicalProfileSchema = z.object({
   body: profileBody.default({}),
 });
 
+export const snapshotHistorySchema = z.object({
+  params: clientParam,
+});
+
+export const snapshotByIdSchema = z.object({
+  params: clientParam.extend({
+    snapshotId: z.string().min(1, 'Snapshot ID is required'),
+  }),
+});
+
+export const compareSnapshotsSchema = z.object({
+  params: clientParam,
+  query: z.object({
+    baselineSnapshotId: z.string().min(1, 'Baseline snapshot ID is required'),
+    comparisonSnapshotId: z.string().min(1, 'Comparison snapshot ID is required'),
+  }),
+});
+
 export const updateSectionStatusSchema = z.object({
   params: clientParam.extend({
     section: z.nativeEnum(ASSESSMENT_SECTIONS),

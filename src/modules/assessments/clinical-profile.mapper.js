@@ -156,6 +156,17 @@ export function mapRiskFlag(flag) {
   };
 }
 
+export function mapAssessmentSnapshotHistoryItem(snapshot) {
+  if (!snapshot) return null;
+  return {
+    id: snapshot.id,
+    version: snapshot.version,
+    generatedAt: mapDate(snapshot.generatedAt),
+    generatedBy: mapCreator(snapshot.generatedBy),
+    sourceUpdatedAt: mapDate(snapshot.sourceUpdatedAt),
+  };
+}
+
 export function mapAssessmentSnapshot(snapshot) {
   if (!snapshot) return null;
   return {
