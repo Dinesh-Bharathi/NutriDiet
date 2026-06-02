@@ -20,6 +20,7 @@ export function mapAssessment(assessment) {
     heightCm: assessment.heightCm || null,
     weightKg: assessment.weightKg || null,
     bmi: assessment.bmi || null,
+    goalType: assessment.goalType || null,
     goal: assessment.goal || null,
     activityLevel: assessment.activityLevel || null,
     waterIntakeLiters: assessment.waterIntakeLiters || null,

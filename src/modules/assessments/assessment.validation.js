@@ -1,10 +1,11 @@
 // src/modules/assessments/assessment.validation.js
 // Zod schemas for client assessment requests.
 import { z } from 'zod';
-import { ACTIVITY_LEVEL } from './assessment.constants.js';
+import { ACTIVITY_LEVEL, CLIENT_GOAL_TYPE } from './assessment.constants.js';
 import { PAGINATION } from '../../config/constants.js';
 
 const activityLevelEnum = z.nativeEnum(ACTIVITY_LEVEL);
+const goalTypeEnum = z.nativeEnum(CLIENT_GOAL_TYPE);
 
 // Helper for numeric inputs that can be optional/nullable
 const optionalNumeric = (min, max, label) =>
@@ -27,6 +28,7 @@ export const createAssessmentSchema = z.object({
       .default(() => new Date()),
     heightCm: optionalNumeric(50, 250, 'Height'),
     weightKg: optionalNumeric(2, 500, 'Weight'),
+    goalType: goalTypeEnum,
     goal: z.string().max(1000).nullable().optional(),
     activityLevel: activityLevelEnum.nullable().optional(),
     waterIntakeLiters: optionalNumeric(0, 20, 'Water intake'),
@@ -51,6 +53,7 @@ export const updateAssessmentSchema = z.object({
       .optional(),
     heightCm: optionalNumeric(50, 250, 'Height'),
     weightKg: optionalNumeric(2, 500, 'Weight'),
+    goalType: goalTypeEnum,
     goal: z.string().max(1000).nullable().optional(),
     activityLevel: activityLevelEnum.nullable().optional(),
     waterIntakeLiters: optionalNumeric(0, 20, 'Water intake'),

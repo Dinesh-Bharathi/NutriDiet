@@ -10,23 +10,10 @@ export const SECTION_STATUS = Object.freeze({
   COMPLETED: 'COMPLETED',
 });
 
-export const CLIENT_GOAL_TYPE = Object.freeze({
-  WEIGHT_LOSS: 'WEIGHT_LOSS',
-  WEIGHT_GAIN: 'WEIGHT_GAIN',
-  MAINTENANCE: 'MAINTENANCE',
-  MUSCLE_GAIN: 'MUSCLE_GAIN',
-  PERFORMANCE: 'PERFORMANCE',
-  MEDICAL_NUTRITION: 'MEDICAL_NUTRITION',
-  GENERAL_WELLNESS: 'GENERAL_WELLNESS',
-  CUSTOM: 'CUSTOM',
-});
+import { GOAL_TYPE, GOAL_STATUS } from '../../shared/constants/goal.constants.js';
 
-export const CLIENT_GOAL_STATUS = Object.freeze({
-  ACTIVE: 'ACTIVE',
-  COMPLETED: 'COMPLETED',
-  SUPERSEDED: 'SUPERSEDED',
-  CANCELLED: 'CANCELLED',
-});
+export const CLIENT_GOAL_TYPE = GOAL_TYPE;
+export const CLIENT_GOAL_STATUS = GOAL_STATUS;
 
 export const LAB_RESULT_SEVERITY = Object.freeze({
   LOW: 'LOW',

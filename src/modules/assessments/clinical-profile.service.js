@@ -473,7 +473,7 @@ export const clinicalProfileService = {
     await clinicalProfileRepository.updateLegacyAssessment(
       tenantId,
       data.assessmentId ?? profile.latestAssessmentId,
-      { goal: data.notes ?? data.goalType }
+      { goalType: data.goalType, goal: data.notes ?? data.goalType }
     );
 
     return goal;

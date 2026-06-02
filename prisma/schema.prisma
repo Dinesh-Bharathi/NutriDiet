@@ -347,6 +347,7 @@ model Assessment {
   bmi      Float?
 
   goal String?
+  goalType ClientGoalType?
 
   activityLevel     ActivityLevel?
   waterIntakeLiters Float?
