@@ -14,9 +14,6 @@ export const assessmentController = {
     const tenantId = req.user.tenantId;
     const creatorId = req.user.userId;
     const { clientId } = req.params;
-    console.log("============================");
-    console.log("tenantId 1", tenantId);
-    console.log("============================");
 
     const assessment = await assessmentService.createAssessment(
       tenantId,
