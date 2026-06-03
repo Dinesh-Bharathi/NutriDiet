@@ -57,6 +57,14 @@ router.delete(
   asyncHandler(clientController.deleteClient)
 );
 
+import { clientOverviewController } from './client-overview.controller.js';
+
+// GET /api/v1/clients/:id/overview - Client Overview Aggregation API
+router.get(
+  '/:clientId/overview',
+  asyncHandler(clientOverviewController.getOverview)
+);
+
 // ── Client Assessments Sub-Routes ───────────────────────────────────────────
 import { assessmentController } from '../assessments/assessment.controller.js';
 import {

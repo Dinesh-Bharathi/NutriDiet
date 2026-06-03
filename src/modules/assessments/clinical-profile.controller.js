@@ -1,6 +1,7 @@
 import { HTTP_STATUS } from '../../config/constants.js';
 import { sendSuccess } from '../../utils/ApiResponse.js';
 import { clinicalProfileService } from './clinical-profile.service.js';
+import { readinessService } from './readiness.service.js';
 import {
   mapAnthropometricRecord,
   mapAssessmentSnapshot,
@@ -43,9 +44,11 @@ export const clinicalProfileController = {
   async getClinicalProfile(req, res) {
     const { tenantId, userId } = userContext(req);
     const snapshot = await clinicalProfileService.getSnapshot(tenantId, req.params.clientId, userId);
+    const readinessScore = await readinessService.calculateReadinessScore(tenantId, snapshot.profile);
 
     return sendSuccess(res, HTTP_STATUS.OK, 'Clinical profile retrieved successfully', {
       clinicalProfile: mapSnapshotResponse(snapshot),
+      readinessScore,
     });
   },
 
@@ -229,11 +232,13 @@ export const clinicalProfileController = {
   },
 
   async updateRiskFlagStatus(req, res) {
-    const { tenantId } = userContext(req);
+    const { tenantId, userId } = userContext(req);
     await clinicalProfileService.updateRiskFlagStatus(
       tenantId,
       req.params.riskFlagId,
-      req.body.status
+      req.body.status,
+      userId,
+      req.body.resolutionNote
     );
 
     return sendSuccess(res, HTTP_STATUS.OK, 'Risk flag status updated successfully');

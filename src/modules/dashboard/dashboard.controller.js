@@ -2,8 +2,8 @@ import { dashboardService } from './dashboard.service.js';
 
 export const dashboardController = {
   async getOverview(req, res) {
-    const { tenantId } = req;
-    const userId = req.user?.id;
+    const tenantId = req.user?.tenantId;
+    const userId = req.user?.id || req.user?.userId;
 
     const data = await dashboardService.getOverview(tenantId, userId);
 

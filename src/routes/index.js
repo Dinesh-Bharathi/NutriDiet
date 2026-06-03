@@ -69,12 +69,15 @@ import mealSwapRouter from '../modules/meal-swaps/meal-swap.routes.js';
 import clinicalProfileRouter from '../modules/assessments/clinical-profile.routes.js';
 import dashboardRouter from '../modules/dashboard/dashboard.routes.js';
 
+import systemRouter from '../modules/system/system.routes.js';
+
 router.use('/', cycleRouter);
 router.use('/', templateCycleRouter);
 router.use('/', foodLibraryV2Router);
 router.use('/', mealSwapRouter);
 router.use('/', clinicalProfileRouter);
 router.use('/dashboard', dashboardRouter);
+router.use('/system', systemRouter);
 
 // ── Foundation ping route ────────────────────────────────────────────────────
 router.get('/ping', (_req, res) => {

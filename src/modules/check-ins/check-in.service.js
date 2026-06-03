@@ -3,6 +3,7 @@
 import { checkInRepository } from './check-in.repository.js';
 import { clientRepository } from '../clients/client.repository.js';
 import { dietPlanRepository } from '../diet-plans/diet-plan.repository.js';
+import { clinicalProfileService } from '../assessments/clinical-profile.service.js';
 import { CHECK_IN_STATUS } from './check-in.constants.js';
 import ApiError from '../../utils/ApiError.js';
 
@@ -99,6 +100,44 @@ export const checkInService = {
       ...data,
       submittedAt,
     });
+
+    // Create Anthropometric Record if physical measurements exist
+    if (
+      data.weightKg !== undefined ||
+      data.bodyFatPercent !== undefined ||
+      data.waistCm !== undefined ||
+      data.hipCm !== undefined ||
+      data.chestCm !== undefined ||
+      data.armCm !== undefined ||
+      data.thighCm !== undefined ||
+      data.neckCm !== undefined
+    ) {
+      await clinicalProfileService.createAnthropometricRecord(tenantId, clientId, null, {
+        weightKg: data.weightKg,
+        bodyFatPercent: data.bodyFatPercent,
+        waistCm: data.waistCm,
+        hipCm: data.hipCm,
+        chestCm: data.chestCm,
+        armCm: data.armCm,
+        thighCm: data.thighCm,
+        neckCm: data.neckCm,
+        measuredAt: data.checkInDate || new Date(),
+        notes: data.clientNotes ? `From Check-In: ${data.clientNotes}` : 'Created from Check-In',
+      });
+    }
+
+    // Create Lifestyle Profile if behavioral measurements exist
+    if (
+      data.sleepHours !== undefined ||
+      data.waterIntakeLiters !== undefined ||
+      data.activityLevel !== undefined
+    ) {
+      await clinicalProfileService.upsertLifestyleProfile(tenantId, clientId, null, {
+        sleepHours: data.sleepHours,
+        hydrationLiters: data.waterIntakeLiters,
+        activityLevel: data.activityLevel,
+      });
+    }
 
     // 4. Retrieve delta against previous check-in
     const prev = await checkInRepository.findPreviousCheckIn(tenantId, clientId, checkIn.checkInDate, checkIn.id);
@@ -258,6 +297,32 @@ export const checkInService = {
 
     const updated = await checkInRepository.update(id, updateData);
 
+    // Create Anthropometric Record if check-in is submitted with measurements
+    if (
+      updateData.status === CHECK_IN_STATUS.SUBMITTED &&
+      (updated.weightKg !== null ||
+        updated.bodyFatPercent !== null ||
+        updated.waistCm !== null ||
+        updated.hipCm !== null ||
+        updated.chestCm !== null ||
+        updated.armCm !== null ||
+        updated.thighCm !== null ||
+        updated.neckCm !== null)
+    ) {
+      await clinicalProfileService.createAnthropometricRecord(tenantId, updated.clientId, null, {
+        weightKg: updated.weightKg,
+        bodyFatPercent: updated.bodyFatPercent,
+        waistCm: updated.waistCm,
+        hipCm: updated.hipCm,
+        chestCm: updated.chestCm,
+        armCm: updated.armCm,
+        thighCm: updated.thighCm,
+        neckCm: updated.neckCm,
+        measuredAt: updated.checkInDate || new Date(),
+        notes: updated.clientNotes ? `From Check-In: ${updated.clientNotes}` : 'Submitted via Check-In',
+      });
+    }
+
     const prev = await checkInRepository.findPreviousCheckIn(
       tenantId,
       updated.clientId,
@@ -324,9 +389,37 @@ export const checkInService = {
    * @returns {Promise<void>}
    */
   async deleteCheckIn(tenantId, id) {
+    const existing = await checkInRepository.findById(tenantId, id);
+    if (!existing) {
+      throw ApiError.notFound('Check-in');
+    }
+
     const affectedCount = await checkInRepository.softDelete(tenantId, id);
     if (affectedCount === 0) {
       throw ApiError.notFound('Check-in');
+    }
+
+    // Safest Long-Term Architecture: Audit-friendly Soft Delete
+    // Soft-delete the corresponding anthropometric record created by this check-in
+    // We match by identical timestamp (checkInDate) and notes prefix.
+    try {
+      const { PrismaClient } = await import('@prisma/client');
+      const prisma = new PrismaClient();
+      await prisma.clientAnthropometricRecord.updateMany({
+        where: {
+          tenantId,
+          clientId: existing.clientId,
+          measuredAt: existing.checkInDate,
+          notes: {
+            startsWith: 'From Check-In',
+          },
+        },
+        data: {
+          deletedAt: new Date(),
+        },
+      });
+    } catch (error) {
+      console.error('Failed to soft-delete linked anthropometric record:', error);
     }
   },
 };

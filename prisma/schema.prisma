@@ -674,6 +674,7 @@ model ClientGoalProfile {
   client     Client                @relation(fields: [clientId], references: [id])
   profile    ClientClinicalProfile @relation(fields: [profileId], references: [id])
   assessment Assessment?           @relation(fields: [assessmentId], references: [id], onDelete: SetNull)
+  dietPlans  DietPlan[]
 
   @@index([tenantId, clientId])
   @@index([profileId])
@@ -835,7 +836,7 @@ model DietPlan {
 
   title       String
   description String?
-  goal        String?
+  goalProfileId String?
 
   dailyCalories Int?
   proteinGrams  Float?
@@ -864,10 +865,11 @@ model DietPlan {
   deletedAt DateTime?
 
   // Relations
-  tenant     Tenant          @relation(fields: [tenantId], references: [id])
-  client     Client          @relation(fields: [clientId], references: [id])
-  assessment Assessment?     @relation(fields: [assessmentId], references: [id])
-  creator    User            @relation(fields: [createdBy], references: [id])
+  tenant      Tenant             @relation(fields: [tenantId], references: [id])
+  client      Client             @relation(fields: [clientId], references: [id])
+  assessment  Assessment?        @relation(fields: [assessmentId], references: [id])
+  goalProfile ClientGoalProfile? @relation(fields: [goalProfileId], references: [id])
+  creator     User               @relation(fields: [createdBy], references: [id])
   meals      DietPlanMeal[]
   checkIns   ClientCheckIn[]
   cycles     DietPlanCycle[]
@@ -979,7 +981,7 @@ model DietPlanTemplate {
   tenantId      String
   title         String
   description   String?
-  goal          String?
+  goalType      ClientGoalType?
   dailyCalories Int?
   proteinGrams  Float?
   carbGrams     Float?

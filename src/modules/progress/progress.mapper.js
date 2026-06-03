@@ -62,6 +62,7 @@ export const progressMapper = {
       averageAdherence: summary.averageAdherence,
       lastCheckInDate: summary.lastCheckInDate,
       checkInCount: summary.checkInCount,
+      riskSummary: summary.riskSummary,
     };
   },
 

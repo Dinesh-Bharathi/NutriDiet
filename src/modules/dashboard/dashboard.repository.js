@@ -52,7 +52,7 @@ export const dashboardRepository = {
     });
 
     const buckets = {};
-    for (let i = 0; i < days; i++) {
+    for (let i = 0; i <= days; i++) {
       const d = new Date(since);
       d.setDate(d.getDate() + i);
       const key = d.toISOString().slice(0, 10);
@@ -70,25 +70,25 @@ export const dashboardRepository = {
     }));
   },
 
-  async getAssessmentActivity(tenantId, days) {
+  async getClinicalActivity(tenantId, days) {
     const since = new Date();
     since.setDate(since.getDate() - days);
 
-    const assessments = await prisma.assessment.findMany({
+    const records = await prisma.clientAnthropometricRecord.findMany({
       where: { tenantId, deletedAt: null, createdAt: { gte: since } },
       select: { createdAt: true },
       orderBy: { createdAt: 'asc' },
     });
 
     const buckets = {};
-    for (let i = 0; i < days; i++) {
+    for (let i = 0; i <= days; i++) {
       const d = new Date(since);
       d.setDate(d.getDate() + i);
       const key = d.toISOString().slice(0, 10);
       buckets[key] = 0;
     }
 
-    assessments.forEach((a) => {
+    records.forEach((a) => {
       const key = a.createdAt.toISOString().slice(0, 10);
       if (buckets[key] !== undefined) buckets[key]++;
     });
@@ -124,7 +124,7 @@ export const dashboardRepository = {
     });
 
     const buckets = {};
-    for (let i = 0; i < days; i++) {
+    for (let i = 0; i <= days; i++) {
       const d = new Date(since);
       d.setDate(d.getDate() + i);
       const key = d.toISOString().slice(0, 10);
@@ -218,12 +218,12 @@ export const dashboardRepository = {
           take: 10,
         }),
 
-        // Missing Assessments — clients without any assessment
+        // Missing Clinical Profiles — clients without a clinical profile
         prisma.client.findMany({
           where: {
             tenantId,
             deletedAt: null,
-            assessments: { none: { deletedAt: null } },
+            clinicalProfile: null,
           },
           select: { id: true, firstName: true, lastName: true },
           take: 10,
@@ -269,7 +269,7 @@ export const dashboardRepository = {
         flagType: item.flagType,
         reason: item.reason,
       })),
-      missingAssessments: missingAssessments.map((c) => ({
+      missingClinicalProfiles: missingAssessments.map((c) => ({
         clientId: c.id,
         clientName: `${c.firstName} ${c.lastName}`,
       })),

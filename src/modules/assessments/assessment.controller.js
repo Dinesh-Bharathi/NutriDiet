@@ -1,9 +1,9 @@
 // src/modules/assessments/assessment.controller.js
 // Client assessment HTTP adapter endpoints.
-import { assessmentService } from './assessment.service.js';
-import { mapAssessment, mapAssessmentsList } from './assessment.mapper.js';
-import { sendSuccess } from '../../utils/ApiResponse.js';
-import { HTTP_STATUS } from '../../config/constants.js';
+import { assessmentService } from "./assessment.service.js";
+import { mapAssessment, mapAssessmentsList } from "./assessment.mapper.js";
+import { sendSuccess } from "../../utils/ApiResponse.js";
+import { HTTP_STATUS } from "../../config/constants.js";
 
 export const assessmentController = {
   /**
@@ -14,19 +14,22 @@ export const assessmentController = {
     const tenantId = req.user.tenantId;
     const creatorId = req.user.userId;
     const { clientId } = req.params;
+    console.log("============================");
+    console.log("tenantId 1", tenantId);
+    console.log("============================");
 
     const assessment = await assessmentService.createAssessment(
       tenantId,
       clientId,
       creatorId,
-      req.body
+      req.body,
     );
 
     return sendSuccess(
       res,
       HTTP_STATUS.CREATED,
-      'Assessment created successfully',
-      { assessment: mapAssessment(assessment) }
+      "Assessment created successfully",
+      { assessment: mapAssessment(assessment) },
     );
   },
 
@@ -45,17 +48,17 @@ export const assessmentController = {
     const result = await assessmentService.getClientAssessments(
       tenantId,
       clientId,
-      pagination
+      pagination,
     );
 
     return sendSuccess(
       res,
       HTTP_STATUS.OK,
-      'Assessments retrieved successfully',
+      "Assessments retrieved successfully",
       {
         assessments: mapAssessmentsList(result.assessments),
         pagination: result.pagination,
-      }
+      },
     );
   },
 
@@ -72,8 +75,8 @@ export const assessmentController = {
     return sendSuccess(
       res,
       HTTP_STATUS.OK,
-      'Assessment retrieved successfully',
-      { assessment: mapAssessment(assessment) }
+      "Assessment retrieved successfully",
+      { assessment: mapAssessment(assessment) },
     );
   },
 
@@ -88,15 +91,12 @@ export const assessmentController = {
     const assessment = await assessmentService.updateAssessment(
       tenantId,
       id,
-      req.body
+      req.body,
     );
 
-    return sendSuccess(
-      res,
-      HTTP_STATUS.OK,
-      'Assessment updated successfully',
-      { assessment: mapAssessment(assessment) }
-    );
+    return sendSuccess(res, HTTP_STATUS.OK, "Assessment updated successfully", {
+      assessment: mapAssessment(assessment),
+    });
   },
 
   /**
@@ -109,6 +109,6 @@ export const assessmentController = {
 
     await assessmentService.deleteAssessment(tenantId, id);
 
-    return sendSuccess(res, HTTP_STATUS.OK, 'Assessment deleted successfully');
+    return sendSuccess(res, HTTP_STATUS.OK, "Assessment deleted successfully");
   },
 };

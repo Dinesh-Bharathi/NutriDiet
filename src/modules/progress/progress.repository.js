@@ -25,6 +25,27 @@ export const progressRepository = {
   },
 
   /**
+   * Fetches all anthropometric records for a client.
+   *
+   * @param {string} tenantId
+   * @param {string} clientId
+   * @param {string} sortOrder - 'asc' or 'desc'
+   * @returns {Promise<Array<object>>}
+   */
+  async findClientAnthropometricRecords(tenantId, clientId, sortOrder = 'asc') {
+    return prisma.clientAnthropometricRecord.findMany({
+      where: {
+        tenantId,
+        clientId,
+        deletedAt: null,
+      },
+      orderBy: {
+        measuredAt: sortOrder,
+      },
+    });
+  },
+
+  /**
    * Retrieves the client's latest recorded height from assessments.
    *
    * @param {string} tenantId

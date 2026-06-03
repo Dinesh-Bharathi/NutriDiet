@@ -396,16 +396,7 @@ export const clinicalProfileRepository = {
     });
   },
 
-  async updateLegacyAssessment(tenantId, assessmentId, data) {
-    if (!assessmentId) return null;
-    const existing = await this.findAssessmentById(tenantId, assessmentId);
-    if (!existing) return null;
 
-    return prisma.assessment.update({
-      where: { id: assessmentId },
-      data,
-    });
-  },
 
   async getSnapshotParts(tenantId, profile) {
     const [

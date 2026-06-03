@@ -1,5 +1,6 @@
 import ApiError from '../../utils/ApiError.js';
 import { clinicalProfileRepository } from './clinical-profile.repository.js';
+import { riskFlagService } from './risk-flag.service.js';
 import { SECTION_STATUS } from './clinical-profile.constants.js';
 
 function calculateBmi(heightCm, weightKg) {
@@ -11,34 +12,6 @@ function calculateBmi(heightCm, weightKg) {
 function joinNames(items, field = 'name') {
   if (!items || items.length === 0) return null;
   return items.map((item) => item[field]).filter(Boolean).join(', ');
-}
-
-function buildLegacyUpdateFromAnthropometrics(data) {
-  const legacy = {};
-  if (data.heightCm !== undefined) legacy.heightCm = data.heightCm;
-  if (data.weightKg !== undefined) legacy.weightKg = data.weightKg;
-  if (data.bmi !== undefined) {
-    legacy.bmi = data.bmi;
-  } else if (data.heightCm !== undefined || data.weightKg !== undefined) {
-    legacy.bmi = calculateBmi(data.heightCm, data.weightKg);
-  }
-  return legacy;
-}
-
-function buildLegacyUpdateFromMedical(data) {
-  return {
-    medicalConditions: joinNames(data.conditions),
-    allergies: joinNames(data.allergies),
-    medications: joinNames(data.medications),
-  };
-}
-
-function buildLegacyUpdateFromLifestyle(data) {
-  const legacy = {};
-  if (data.activityLevel !== undefined) legacy.activityLevel = data.activityLevel;
-  if (data.hydrationLiters !== undefined) legacy.waterIntakeLiters = data.hydrationLiters;
-  if (data.sleepHours !== undefined) legacy.sleepHours = data.sleepHours;
-  return legacy;
 }
 
 function buildLegacySummary(snapshotParts) {
@@ -388,12 +361,6 @@ export const clinicalProfileService = {
       measuredAt: data.measuredAt ?? new Date(),
     });
 
-    await clinicalProfileRepository.updateLegacyAssessment(
-      tenantId,
-      data.assessmentId ?? profile.latestAssessmentId,
-      buildLegacyUpdateFromAnthropometrics({ ...data, bmi })
-    );
-
     await clinicalProfileRepository.upsertSectionStatus(
       tenantId,
       profile,
@@ -416,11 +383,6 @@ export const clinicalProfileService = {
     const payload = mapMedicalInput(data);
 
     await clinicalProfileRepository.replaceMedicalHistory(tenantId, profile, payload);
-    await clinicalProfileRepository.updateLegacyAssessment(
-      tenantId,
-      data.assessmentId ?? profile.latestAssessmentId,
-      buildLegacyUpdateFromMedical(payload)
-    );
     await clinicalProfileRepository.upsertSectionStatus(
       tenantId,
       profile,
@@ -441,12 +403,6 @@ export const clinicalProfileService = {
   async upsertLifestyleProfile(tenantId, clientId, userId, data) {
     const profile = await this.ensureProfile(tenantId, clientId, userId);
     const lifestyle = await clinicalProfileRepository.upsertLifestyleProfile(tenantId, profile, data);
-
-    await clinicalProfileRepository.updateLegacyAssessment(
-      tenantId,
-      data.assessmentId ?? profile.latestAssessmentId,
-      buildLegacyUpdateFromLifestyle(data)
-    );
     await clinicalProfileRepository.upsertSectionStatus(
       tenantId,
       profile,
@@ -469,12 +425,6 @@ export const clinicalProfileService = {
     await clinicalProfileRepository.supersedeActiveGoals(tenantId, profile.id);
     const nextVersion = (await clinicalProfileRepository.countGoalProfiles(tenantId, profile.id)) + 1;
     const goal = await clinicalProfileRepository.createGoalProfile(tenantId, profile, data, nextVersion);
-
-    await clinicalProfileRepository.updateLegacyAssessment(
-      tenantId,
-      data.assessmentId ?? profile.latestAssessmentId,
-      { goalType: data.goalType, goal: data.notes ?? data.goalType }
-    );
 
     return goal;
   },
@@ -505,6 +455,16 @@ export const clinicalProfileService = {
       data.assessmentId
     );
 
+    if (result.isAbnormal || result.severity === 'HIGH' || result.severity === 'CRITICAL') {
+      await riskFlagService.generateSystemRisk(tenantId, clientId, profile.id, {
+        type: 'ABNORMAL_LAB',
+        severity: result.severity === 'CRITICAL' ? 'CRITICAL' : (result.severity === 'HIGH' ? 'HIGH' : 'MODERATE'),
+        reason: `Abnormal Lab Result: ${result.markerName} (${result.valueNumeric ?? result.valueText} ${result.unit ?? ''})`,
+        sourceDomain: 'LAB_RESULT',
+        sourceRecordId: result.id,
+      });
+    }
+
     return result;
   },
 
@@ -518,10 +478,16 @@ export const clinicalProfileService = {
     return clinicalProfileRepository.getRiskFlags(tenantId, profile.id);
   },
 
-  async updateRiskFlagStatus(tenantId, riskFlagId, status) {
-    const count = await clinicalProfileRepository.updateRiskFlagStatus(tenantId, riskFlagId, status);
-    if (count === 0) {
-      throw ApiError.notFound('Risk flag');
+  async updateRiskFlagStatus(tenantId, riskFlagId, status, userId, resolutionNote = null) {
+    if (status === 'ACKNOWLEDGED') {
+      await riskFlagService.acknowledgeRisk(tenantId, riskFlagId, userId);
+    } else if (status === 'RESOLVED') {
+      await riskFlagService.resolveRisk(tenantId, riskFlagId, userId, resolutionNote);
+    } else {
+      const count = await clinicalProfileRepository.updateRiskFlagStatus(tenantId, riskFlagId, status);
+      if (count === 0) {
+        throw ApiError.notFound('Risk flag');
+      }
     }
   },
 

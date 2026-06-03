@@ -4,6 +4,7 @@ import { progressRepository } from './progress.repository.js';
 import { clientRepository } from '../clients/client.repository.js';
 import { PROGRESS_CONSTANTS } from './progress.constants.js';
 import ApiError from '../../utils/ApiError.js';
+import prisma from '../../lib/prisma.js';
 
 /**
  * Calculates trend direction metadata.
@@ -24,24 +25,24 @@ function getTrendDirection(change) {
  * @param {Array<object>} checkIns - Sorted chronologically (asc)
  * @returns {Array<object>}
  */
-function calculateWeightTrends(checkIns) {
-  return checkIns
-    .map((c, i) => {
-      const currentVal = c.weightKg;
+function calculateWeightTrends(anthropometrics) {
+  return anthropometrics
+    .map((a, i) => {
+      const currentVal = a.weightKg;
       if (currentVal === null || currentVal === undefined) return null;
 
       // Find previous weight value
       let prevVal = null;
       for (let j = i - 1; j >= 0; j--) {
-        if (checkIns[j].weightKg !== null && checkIns[j].weightKg !== undefined) {
-          prevVal = checkIns[j].weightKg;
+        if (anthropometrics[j].weightKg !== null && anthropometrics[j].weightKg !== undefined) {
+          prevVal = anthropometrics[j].weightKg;
           break;
         }
       }
 
       const change = prevVal !== null ? Math.round((currentVal - prevVal) * 100) / 100 : null;
       return {
-        date: c.checkInDate.toISOString().split('T')[0],
+        date: a.measuredAt.toISOString().split('T')[0],
         value: currentVal,
         change,
         trend: getTrendDirection(change),
@@ -57,29 +58,24 @@ function calculateWeightTrends(checkIns) {
  * @param {number|null} heightCm
  * @returns {Array<object>}
  */
-function calculateBmiTrends(checkIns, heightCm) {
-  if (!heightCm) return [];
-  const heightMeters = heightCm / 100;
-
-  return checkIns
-    .map((c, i) => {
-      const currentWeight = c.weightKg;
-      if (currentWeight === null || currentWeight === undefined) return null;
-
-      const currentBmi = Math.round((currentWeight / (heightMeters * heightMeters)) * 100) / 100;
+function calculateBmiTrends(anthropometrics) {
+  return anthropometrics
+    .map((a, i) => {
+      const currentBmi = a.bmi;
+      if (currentBmi === null || currentBmi === undefined) return null;
 
       // Find previous BMI value
       let prevBmi = null;
       for (let j = i - 1; j >= 0; j--) {
-        if (checkIns[j].weightKg !== null && checkIns[j].weightKg !== undefined) {
-          prevBmi = Math.round((checkIns[j].weightKg / (heightMeters * heightMeters)) * 100) / 100;
+        if (anthropometrics[j].bmi !== null && anthropometrics[j].bmi !== undefined) {
+          prevBmi = anthropometrics[j].bmi;
           break;
         }
       }
 
       const change = prevBmi !== null ? Math.round((currentBmi - prevBmi) * 100) / 100 : null;
       return {
-        date: c.checkInDate.toISOString().split('T')[0],
+        date: a.measuredAt.toISOString().split('T')[0],
         value: currentBmi,
         change,
         trend: getTrendDirection(change),
@@ -94,15 +90,15 @@ function calculateBmiTrends(checkIns, heightCm) {
  * @param {Array<object>} checkIns - Sorted chronologically (asc)
  * @returns {Array<object>}
  */
-function calculateMeasurementTrends(checkIns) {
+function calculateMeasurementTrends(anthropometrics) {
   const keys = ['waistCm', 'hipCm', 'chestCm', 'armCm', 'thighCm'];
-  return checkIns.map((c, i) => {
+  return anthropometrics.map((a, i) => {
     const item = {
-      date: c.checkInDate.toISOString().split('T')[0],
+      date: a.measuredAt.toISOString().split('T')[0],
     };
 
     keys.forEach((key) => {
-      const currentVal = c[key];
+      const currentVal = a[key];
       const label = key.replace('Cm', ''); // 'waist', 'hip', etc.
 
       if (currentVal !== null && currentVal !== undefined) {
@@ -111,8 +107,8 @@ function calculateMeasurementTrends(checkIns) {
         // Find previous measurement value
         let prevVal = null;
         for (let j = i - 1; j >= 0; j--) {
-          if (checkIns[j][key] !== null && checkIns[j][key] !== undefined) {
-            prevVal = checkIns[j][key];
+          if (anthropometrics[j][key] !== null && anthropometrics[j][key] !== undefined) {
+            prevVal = anthropometrics[j][key];
             break;
           }
         }
@@ -175,12 +171,12 @@ export const progressService = {
     }
 
     const checkIns = await progressRepository.findClientCheckIns(tenantId, clientId, 'asc');
-    const heightCm = await progressRepository.findClientLatestHeight(tenantId, clientId);
+    const anthropometrics = await progressRepository.findClientAnthropometricRecords(tenantId, clientId, 'asc');
 
     return {
-      weightTrends: calculateWeightTrends(checkIns),
-      bmiTrends: calculateBmiTrends(checkIns, heightCm),
-      measurementTrends: calculateMeasurementTrends(checkIns),
+      weightTrends: calculateWeightTrends(anthropometrics),
+      bmiTrends: calculateBmiTrends(anthropometrics),
+      measurementTrends: calculateMeasurementTrends(anthropometrics),
       lifestyleTrends: calculateLifestyleTrends(checkIns),
       adherenceTrends: calculateAdherenceTrends(checkIns),
     };
@@ -200,6 +196,7 @@ export const progressService = {
     }
 
     const checkIns = await progressRepository.findClientCheckIns(tenantId, clientId, 'asc');
+    const anthropometrics = await progressRepository.findClientAnthropometricRecords(tenantId, clientId, 'asc');
 
     if (checkIns.length === 0) {
       return {
@@ -236,24 +233,54 @@ export const progressService = {
     }
 
     const latest = checkIns[checkIns.length - 1];
-    const lastCheckInDate = latest.checkInDate.toISOString().split('T')[0];
+    const lastCheckInDate = latest ? latest.checkInDate.toISOString().split('T')[0] : null;
     const checkInCount = checkIns.length;
 
+    // Fetch baseline Assessment
+    const profile = await prisma.clientClinicalProfile.findUnique({
+      where: { clientId },
+      select: { id: true, latestAssessmentId: true }
+    });
+    
+    let baselineAssessment = null;
+    if (profile?.latestAssessmentId) {
+      baselineAssessment = await prisma.assessment.findUnique({
+        where: { id: profile.latestAssessmentId }
+      });
+    }
+
+    const riskSummary = { critical: 0, high: 0, moderate: 0 };
+    if (profile) {
+      const risks = await prisma.clientRiskFlag.findMany({
+        where: { tenantId, profileId: profile.id, status: 'ACTIVE', deletedAt: null }
+      });
+      risks.forEach(r => {
+        if (r.severity === 'CRITICAL') riskSummary.critical++;
+        else if (r.severity === 'HIGH') riskSummary.high++;
+        else if (r.severity === 'MODERATE') riskSummary.moderate++;
+      });
+    }
+
     // Helper to calculate starting, current, total changes, and trend
-    const getSummaryField = (key) => {
+    const getSummaryField = (key, dataArray, baselineKey = key) => {
       let start = null;
       let current = null;
 
-      for (let i = 0; i < checkIns.length; i++) {
-        if (checkIns[i][key] !== null && checkIns[i][key] !== undefined) {
-          start = checkIns[i][key];
-          break;
+      // Prefer explicit baseline assessment over the oldest anthropometric record
+      if (baselineAssessment && baselineAssessment[baselineKey] !== null && baselineAssessment[baselineKey] !== undefined) {
+        start = baselineAssessment[baselineKey];
+      } else {
+        for (let i = 0; i < dataArray.length; i++) {
+          if (dataArray[i][key] !== null && dataArray[i][key] !== undefined) {
+            start = dataArray[i][key];
+            break;
+          }
         }
       }
 
-      for (let i = checkIns.length - 1; i >= 0; i--) {
-        if (checkIns[i][key] !== null && checkIns[i][key] !== undefined) {
-          current = checkIns[i][key];
+      for (let i = dataArray.length - 1; i >= 0; i--) {
+        if (dataArray[i][key] !== null && dataArray[i][key] !== undefined) {
+          current = dataArray[i][key];
           break;
         }
       }
@@ -267,12 +294,12 @@ export const progressService = {
       };
     };
 
-    const weightSummary = getSummaryField('weightKg');
-    const waistSummary = getSummaryField('waistCm');
-    const hipSummary = getSummaryField('hipCm');
-    const chestSummary = getSummaryField('chestCm');
-    const armSummary = getSummaryField('armCm');
-    const thighSummary = getSummaryField('thighCm');
+    const weightSummary = getSummaryField('weightKg', anthropometrics);
+    const waistSummary = getSummaryField('waistCm', anthropometrics);
+    const hipSummary = getSummaryField('hipCm', anthropometrics);
+    const chestSummary = getSummaryField('chestCm', anthropometrics);
+    const armSummary = getSummaryField('armCm', anthropometrics);
+    const thighSummary = getSummaryField('thighCm', anthropometrics);
 
     const getAverage = (key) => {
       const values = checkIns
@@ -319,6 +346,7 @@ export const progressService = {
       averageAdherence: getAverage('planAdherence'),
       lastCheckInDate,
       checkInCount,
+      riskSummary,
     };
   },
 

@@ -49,6 +49,27 @@ export const dietPlanService = {
       }
     }
 
+    // 2.5 Verify or auto-resolve goal profile
+    if (!data.goalProfileId) {
+      const activeGoals = await prisma.clientGoalProfile.findMany({
+        where: { tenantId, clientId, status: 'ACTIVE', deletedAt: null }
+      });
+      if (activeGoals.length === 1) {
+        data.goalProfileId = activeGoals[0].id;
+      } else if (activeGoals.length === 0) {
+        throw ApiError.badRequest('Client has no active goal profile. A goal profile is required to create a diet plan.');
+      } else {
+        throw ApiError.badRequest('Client has multiple active goal profiles. Please specify one explicitly.');
+      }
+    }
+    
+    const goalProfile = await prisma.clientGoalProfile.findFirst({
+      where: { id: data.goalProfileId, tenantId, clientId, deletedAt: null }
+    });
+    if (!goalProfile) {
+      throw ApiError.badRequest('Goal Profile must exist and belong to the client');
+    }
+
     // 3. Prevent active plan collision
     if (data.status === 'ACTIVE') {
       await checkActivePlanCollision(tenantId, clientId, null, data.startDate, data.endDate);
@@ -104,6 +125,16 @@ export const dietPlanService = {
       const assessment = await assessmentRepository.findById(tenantId, updateData.assessmentId);
       if (!assessment || assessment.clientId !== existing.clientId) {
         throw ApiError.badRequest('Assessment must belong to the same client');
+      }
+    }
+
+    // 3.5 Verify goal profile if updated
+    if (updateData.goalProfileId) {
+      const goalProfile = await prisma.clientGoalProfile.findFirst({
+        where: { id: updateData.goalProfileId, tenantId: existing.tenantId, clientId: existing.clientId, deletedAt: null }
+      });
+      if (!goalProfile) {
+        throw ApiError.badRequest('Goal Profile must exist and belong to the client');
       }
     }
 
