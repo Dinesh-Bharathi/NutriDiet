@@ -18,8 +18,8 @@ import authRouter from '../modules/auth/auth.routes.js';
 router.use('/auth', authRouter);
 
 // User management routes (protected)
-// import userRouter from '../modules/users/user.routes.js';
-// router.use('/users', userRouter);
+import userRouter from '../modules/users/user.routes.js';
+router.use('/users', userRouter);
 
 // Tenant management routes (protected, OWNER / ADMIN only)
 import tenantRouter from '../modules/tenants/tenant.routes.js';
