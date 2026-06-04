@@ -110,6 +110,48 @@ export const checkInController = {
   },
 
   /**
+   * GET /api/v1/check-ins/queue
+   * Server-side paginated + searched practitioner queue.
+   * Accepts ?page, ?limit, and ?q (free-text search on client name / email).
+   * tenantId is read ONLY from req.user.tenantId — never from query params.
+   */
+  async getPractitionerQueue(req, res) {
+    const tenantId = req.user.tenantId;
+
+    const page = parseInt(req.query.page, 10) || 1;
+    const limit = parseInt(req.query.limit, 10) || 10;
+    const q = req.query.q ? String(req.query.q).trim() : undefined;
+
+    const params = {
+      page,
+      limit,
+      q,
+      status: req.query.status,
+      requiresFollowUp: req.query.requiresFollowUp === 'true'
+        ? true
+        : req.query.requiresFollowUp === 'false'
+          ? false
+          : undefined,
+      fromDate: req.query.fromDate ? new Date(req.query.fromDate) : undefined,
+      toDate: req.query.toDate ? new Date(req.query.toDate) : undefined,
+      sortBy: req.query.sortBy,
+      sortOrder: req.query.sortOrder,
+    };
+
+    const result = await checkInService.getPractitionerQueue(tenantId, params);
+
+    return sendSuccess(
+      res,
+      HTTP_STATUS.OK,
+      'Practitioner queue retrieved successfully',
+      {
+        checkIns: mapCheckInList(result.checkIns),
+        pagination: result.pagination,
+      }
+    );
+  },
+
+  /**
    * GET /api/v1/check-ins/:id
    * Retrieves details of a specific check-in.
    */

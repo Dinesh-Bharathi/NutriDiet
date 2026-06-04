@@ -256,6 +256,77 @@ export const checkInService = {
       },
     };
   },
+  /**
+   * Retrieves a paginated, server-searched list of all check-ins for the practitioner queue.
+   * Calculates skip/take here so the repository stays a pure data adapter.
+   *
+   * @param {string} tenantId
+   * @param {object} params
+   * @param {number} params.page
+   * @param {number} params.limit
+   * @param {string} [params.q]
+   * @param {string} [params.status]
+   * @param {boolean} [params.requiresFollowUp]
+   * @param {Date|null} [params.fromDate]
+   * @param {Date|null} [params.toDate]
+   * @param {string} [params.sortBy]
+   * @param {string} [params.sortOrder]
+   * @returns {Promise<{ checkIns: Array<object>, pagination: object }>}
+   */
+  async getPractitionerQueue(tenantId, params = {}) {
+    const {
+      page,
+      limit,
+      q,
+      status,
+      requiresFollowUp,
+      fromDate,
+      toDate,
+      sortBy,
+      sortOrder,
+    } = params;
+
+    const skip = (page - 1) * limit;
+    const take = limit;
+
+    const [checkIns, total] = await checkInRepository.findManyPaginated(tenantId, {
+      skip,
+      take,
+      q,
+      status,
+      requiresFollowUp,
+      fromDate,
+      toDate,
+      sortBy,
+      sortOrder,
+    });
+
+    const populated = await Promise.all(
+      checkIns.map(async (checkIn) => {
+        const prev = await checkInRepository.findPreviousCheckIn(
+          tenantId,
+          checkIn.clientId,
+          checkIn.checkInDate,
+          checkIn.id
+        );
+        const deltas = calculateDeltas(checkIn, prev);
+        return {
+          ...checkIn,
+          ...deltas,
+        };
+      })
+    );
+
+    return {
+      checkIns: populated,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
+  },
 
   /**
    * Updates an existing check-in.

@@ -29,6 +29,13 @@ router.get(
   asyncHandler(checkInController.getAllCheckIns)
 );
 
+// GET /api/v1/check-ins/queue - Server-side paginated + searched practitioner queue
+// MUST be declared before /:id so Express does not interpret "queue" as a param value
+router.get(
+  '/queue',
+  asyncHandler(checkInController.getPractitionerQueue)
+);
+
 // GET /api/v1/check-ins/:id - Retrieve a check-in's details
 router.get(
   '/:id',

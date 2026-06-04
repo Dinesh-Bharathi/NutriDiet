@@ -76,7 +76,7 @@ export const authService = {
   async login(dto, meta) {
     // 1. Lookup — email is unique per tenant; slug disambiguates cross-tenant
 
-    console.log("Login request received in service", dto, meta);
+    logger.info("Login attempt received", { email: dto.email, tenantSlug: dto.tenantSlug });
     const user = await authRepository.findUserByEmailAndSlug(
       dto.email,
       dto.tenantSlug,

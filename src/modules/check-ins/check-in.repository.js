@@ -150,6 +150,98 @@ export const checkInRepository = {
   },
 
   /**
+   * Retrieves a server-side paginated, searched, filtered and sorted list of all check-ins
+   * for the practitioner queue. Uses prisma.$transaction to run count() and findMany()
+   * concurrently inside a single read transaction.
+   *
+   * @param {string} tenantId
+   * @param {object} options
+   * @param {number} options.skip       - Number of records to skip (pre-calculated by service)
+   * @param {number} options.take       - Number of records to return (pre-calculated by service)
+   * @param {string} [options.q]        - Free-text search against client firstName, lastName, email
+   * @param {string} [options.status]   - CHECK_IN_STATUS filter
+   * @param {boolean} [options.requiresFollowUp] - Follow-up flag filter
+   * @param {Date|null} [options.fromDate]
+   * @param {Date|null} [options.toDate]
+   * @param {string} [options.sortBy]   - Field to order by (default: 'checkInDate')
+   * @param {string} [options.sortOrder] - 'asc' | 'desc' (default: 'desc')
+   * @returns {Promise<[Array<object>, number]>}
+   */
+  async findManyPaginated(tenantId, options = {}) {
+    const {
+      skip,
+      take,
+      q,
+      status,
+      requiresFollowUp,
+      fromDate,
+      toDate,
+      sortBy = 'checkInDate',
+      sortOrder = 'desc',
+    } = options;
+
+    const where = {
+      tenantId,
+      deletedAt: null,
+    };
+
+    if (status) {
+      where.status = status;
+    }
+
+    if (requiresFollowUp !== undefined) {
+      where.requiresFollowUp = requiresFollowUp;
+    }
+
+    if (fromDate || toDate) {
+      where.checkInDate = {};
+      if (fromDate) where.checkInDate.gte = fromDate;
+      if (toDate) where.checkInDate.lte = toDate;
+    }
+
+    if (q && q.trim()) {
+      const term = q.trim();
+      where.client = {
+        OR: [
+          { firstName: { contains: term, mode: 'insensitive' } },
+          { lastName: { contains: term, mode: 'insensitive' } },
+          { email: { contains: term, mode: 'insensitive' } },
+        ],
+      };
+    }
+
+    const [checkIns, total] = await prisma.$transaction([
+      prisma.clientCheckIn.findMany({
+        where,
+        skip,
+        take,
+        orderBy: { [sortBy]: sortOrder },
+        include: {
+          client: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              email: true,
+            },
+          },
+          reviewer: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              email: true,
+            },
+          },
+        },
+      }),
+      prisma.clientCheckIn.count({ where }),
+    ]);
+
+    return [checkIns, total];
+  },
+
+  /**
    * Retrieves a paginated, filtered, and sorted list of all check-ins (global practitioner list).
    *
    * @param {string} tenantId
