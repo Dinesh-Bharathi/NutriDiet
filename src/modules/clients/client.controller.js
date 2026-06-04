@@ -101,4 +101,43 @@ export const clientController = {
       'Client deleted successfully'
     );
   },
+
+  /**
+   * PATCH /api/v1/clients/:id/avatar
+   * Attaches an avatar to a client.
+   */
+  async attachAvatar(req, res) {
+    const tenantId = req.user.tenantId;
+    const userId = req.user.userId;
+    const { id: clientId } = req.params;
+    const { fileAssetId } = req.body;
+    
+    const client = await clientService.attachAvatar(tenantId, userId, clientId, fileAssetId);
+
+    return sendSuccess(
+      res,
+      HTTP_STATUS.OK,
+      'Client avatar attached successfully',
+      { client: mapClient(client) }
+    );
+  },
+
+  /**
+   * DELETE /api/v1/clients/:id/avatar
+   * Removes an avatar from a client.
+   */
+  async removeAvatar(req, res) {
+    const tenantId = req.user.tenantId;
+    const userId = req.user.userId;
+    const { id: clientId } = req.params;
+    
+    const client = await clientService.removeAvatar(tenantId, userId, clientId);
+
+    return sendSuccess(
+      res,
+      HTTP_STATUS.OK,
+      'Client avatar removed successfully',
+      { client: mapClient(client) }
+    );
+  },
 };

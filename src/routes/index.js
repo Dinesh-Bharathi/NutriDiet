@@ -70,6 +70,7 @@ import clinicalProfileRouter from '../modules/assessments/clinical-profile.route
 import dashboardRouter from '../modules/dashboard/dashboard.routes.js';
 
 import systemRouter from '../modules/system/system.routes.js';
+import storageRouter from '../modules/storage/storage.routes.js';
 
 router.use('/', cycleRouter);
 router.use('/', templateCycleRouter);
@@ -78,6 +79,7 @@ router.use('/', mealSwapRouter);
 router.use('/', clinicalProfileRouter);
 router.use('/dashboard', dashboardRouter);
 router.use('/system', systemRouter);
+router.use('/storage', storageRouter);
 
 // ── Foundation ping route ────────────────────────────────────────────────────
 router.get('/ping', (_req, res) => {

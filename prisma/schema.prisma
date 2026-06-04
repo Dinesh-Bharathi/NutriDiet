@@ -183,6 +183,7 @@ model Tenant {
   clientLabResults            ClientLabResult[]
   clientRiskFlags             ClientRiskFlag[]
   assessmentSnapshots         AssessmentSnapshot[]
+  fileAssets                  FileAsset[]
 
   @@index([slug])
   @@index([status])
@@ -230,6 +231,7 @@ model User {
   completedAssessmentSections  AssessmentSectionStatus[] @relation("AssessmentSectionCompletedBy")
   generatedRiskFlags           ClientRiskFlag[]          @relation("RiskFlagGenerator")
   generatedAssessmentSnapshots AssessmentSnapshot[]      @relation("AssessmentSnapshotGenerator")
+  uploadedFiles                FileAsset[]               @relation("FileUploader")
 
   // Compound unique: email must be unique within a tenant (not globally)
   @@unique([tenantId, email])
@@ -255,9 +257,9 @@ model Client {
   lastName    String
   email       String?
   phone       String?
-  gender      Gender?
-  dateOfBirth DateTime?
-  avatarUrl   String?
+  gender        Gender?
+  dateOfBirth   DateTime?
+  avatarAssetId String?
 
   // Health context (non-PHI; PHI goes in a separate encrypted table in Phase 2)
   notes String?
@@ -273,6 +275,7 @@ model Client {
   // Relations
   tenant                    Tenant                       @relation(fields: [tenantId], references: [id])
   dietitian                 User?                        @relation("AssignedDietitian", fields: [dietitianId], references: [id])
+  avatarAsset               FileAsset?                   @relation("ClientAvatar", fields: [avatarAssetId], references: [id])
   assessments               Assessment[]
   dietPlans                 DietPlan[]
   checkIns                  ClientCheckIn[]
@@ -346,7 +349,7 @@ model Assessment {
   weightKg Float?
   bmi      Float?
 
-  goal String?
+  goal     String?
   goalType ClientGoalType?
 
   activityLevel     ActivityLevel?
@@ -834,8 +837,8 @@ model DietPlan {
   clientId     String
   assessmentId String?
 
-  title       String
-  description String?
+  title         String
+  description   String?
   goalProfileId String?
 
   dailyCalories Int?
@@ -870,9 +873,9 @@ model DietPlan {
   assessment  Assessment?        @relation(fields: [assessmentId], references: [id])
   goalProfile ClientGoalProfile? @relation(fields: [goalProfileId], references: [id])
   creator     User               @relation(fields: [createdBy], references: [id])
-  meals      DietPlanMeal[]
-  checkIns   ClientCheckIn[]
-  cycles     DietPlanCycle[]
+  meals       DietPlanMeal[]
+  checkIns    ClientCheckIn[]
+  cycles      DietPlanCycle[]
 
   @@index([tenantId])
   @@index([clientId])
@@ -977,7 +980,7 @@ model FoodLibrary {
 // ─────────────────────────────────────────────────────────────────────────────
 
 model DietPlanTemplate {
-  id            String  @id @default(cuid())
+  id            String          @id @default(cuid())
   tenantId      String
   title         String
   description   String?
@@ -1350,4 +1353,77 @@ model MealSwapHistory {
   @@index([originalFoodId])
   @@index([targetFoodId])
   @@map("meal_swap_histories")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FILE ASSETS (STORAGE MODULE)
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum StorageProvider {
+  CLOUDINARY
+}
+
+enum FileEntityType {
+  TENANT
+  USER
+  CLIENT
+  ASSESSMENT
+  LAB_REPORT
+  DIET_PLAN
+  PACKAGE
+  PROGRAM
+  PROGRAM_CONTENT
+  APPOINTMENT
+  INVOICE
+  OTHER
+}
+
+enum FileVisibility {
+  PUBLIC
+  PROTECTED
+  PRIVATE
+}
+
+enum FileStatus {
+  ACTIVE
+  DELETED
+}
+
+model FileAsset {
+  id              String          @id @default(cuid())
+  tenantId        String
+  entityType      FileEntityType
+  entityId        String
+  folder          String
+  publicId        String
+  assetId         String? // Immutable asset ID (Cloudinary)
+  version         Int             @default(1)
+  isLatest        Boolean         @default(true)
+  storageProvider StorageProvider @default(CLOUDINARY)
+  resourceType    String
+  fileName        String
+  originalName    String
+  mimeType        String
+  extension       String
+  fileSize        Int
+  url             String
+  secureUrl       String
+  checksum        String?
+  uploadedBy      String
+  visibility      FileVisibility  @default(PRIVATE)
+  status          FileStatus      @default(ACTIVE)
+  metadata        Json?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  deletedAt       DateTime?
+
+  tenant          Tenant   @relation(fields: [tenantId], references: [id])
+  user            User     @relation("FileUploader", fields: [uploadedBy], references: [id])
+  clientsAsAvatar Client[] @relation("ClientAvatar")
+
+  @@index([tenantId])
+  @@index([tenantId, entityType, entityId])
+  @@index([status])
+  @@index([visibility])
+  @@map("file_assets")
 }

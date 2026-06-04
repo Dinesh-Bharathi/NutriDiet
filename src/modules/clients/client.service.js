@@ -4,6 +4,7 @@ import { clientRepository } from './client.repository.js';
 import prisma from '../../lib/prisma.js';
 import ApiError from '../../utils/ApiError.js';
 import { Role } from '@prisma/client';
+import * as storageService from '../storage/storage.service.js';
 
 export const clientService = {
   /**
@@ -121,5 +122,68 @@ export const clientService = {
         totalPages: Math.ceil(total / pagination.limit),
       },
     };
+  },
+
+  /**
+   * Attaches an avatar to a client. Replaces and soft deletes the old one if it exists.
+   *
+   * @param {string} tenantId
+   * @param {string} userId
+   * @param {string} clientId
+   * @param {string} fileAssetId
+   * @returns {Promise<object>}
+   */
+  async attachAvatar(tenantId, userId, clientId, fileAssetId) {
+    const client = await clientRepository.findById(tenantId, clientId);
+    if (!client) {
+      throw ApiError.notFound('Client');
+    }
+
+    const asset = await storageService.getAsset(fileAssetId, tenantId);
+    
+    if (asset.entityType !== 'CLIENT' || asset.entityId !== clientId) {
+      throw ApiError.badRequest('FileAsset does not belong to this client');
+    }
+    
+    if (asset.resourceType !== 'image') {
+      throw ApiError.badRequest('Avatar must be an image');
+    }
+
+    // Option A: Soft delete old avatar if replacing
+    if (client.avatarAssetId && client.avatarAssetId !== fileAssetId) {
+      try {
+        await storageService.deleteAsset(client.avatarAssetId, tenantId, userId);
+      } catch (err) {
+        // Ignore if already deleted
+      }
+    }
+
+    return clientRepository.update(clientId, { avatarAssetId: fileAssetId });
+  },
+
+  /**
+   * Removes an avatar from a client and soft deletes the asset.
+   *
+   * @param {string} tenantId
+   * @param {string} userId
+   * @param {string} clientId
+   * @returns {Promise<object>}
+   */
+  async removeAvatar(tenantId, userId, clientId) {
+    const client = await clientRepository.findById(tenantId, clientId);
+    if (!client) {
+      throw ApiError.notFound('Client');
+    }
+
+    if (client.avatarAssetId) {
+      try {
+        await storageService.deleteAsset(client.avatarAssetId, tenantId, userId);
+      } catch (err) {
+        // Ignore if already deleted
+      }
+      return clientRepository.update(clientId, { avatarAssetId: null });
+    }
+    
+    return client;
   },
 };

@@ -7,6 +7,7 @@ import {
   updateClientSchema,
   queryClientsSchema,
   clientParamSchema,
+  attachAvatarSchema,
 } from './client.validation.js';
 import { validate } from '../../middlewares/validate.middleware.js';
 import { authenticate } from '../../middlewares/auth.middleware.js';
@@ -55,6 +56,20 @@ router.delete(
   '/:id',
   validate(clientParamSchema),
   asyncHandler(clientController.deleteClient)
+);
+
+// PATCH /api/v1/clients/:id/avatar - Attach an avatar to a client
+router.patch(
+  '/:id/avatar',
+  validate(attachAvatarSchema),
+  asyncHandler(clientController.attachAvatar)
+);
+
+// DELETE /api/v1/clients/:id/avatar - Remove an avatar from a client
+router.delete(
+  '/:id/avatar',
+  validate(clientParamSchema),
+  asyncHandler(clientController.removeAvatar)
 );
 
 import { clientOverviewController } from './client-overview.controller.js';

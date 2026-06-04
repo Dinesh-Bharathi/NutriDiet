@@ -31,7 +31,7 @@ export const createClientSchema = z.object({
       .preprocess((val) => (val ? new Date(val) : null), z.date())
       .nullable()
       .optional(),
-    avatarUrl: z.string().url('Invalid avatar URL').nullable().optional(),
+
     notes: z.string().nullable().optional(),
     dietitianId: z.string().nullable().optional(),
     status: statusEnum.optional().default(CLIENT_STATUS.ACTIVE),
@@ -59,7 +59,7 @@ export const updateClientSchema = z.object({
       .preprocess((val) => (val ? new Date(val) : null), z.date())
       .nullable()
       .optional(),
-    avatarUrl: z.string().url('Invalid avatar URL').nullable().optional(),
+
     notes: z.string().nullable().optional(),
     dietitianId: z.string().nullable().optional(),
     status: statusEnum.optional(),
@@ -92,5 +92,15 @@ export const queryClientsSchema = z.object({
 export const clientParamSchema = z.object({
   params: z.object({
     id: z.string().min(1, 'Client ID is required'),
+  }),
+});
+
+// Schema for attaching an avatar to a client
+export const attachAvatarSchema = z.object({
+  params: z.object({
+    id: z.string().min(1, 'Client ID is required'),
+  }),
+  body: z.object({
+    fileAssetId: z.string().min(1, 'Valid FileAsset ID is required'),
   }),
 });

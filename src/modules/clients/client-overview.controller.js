@@ -66,6 +66,13 @@ export const clientOverviewController = {
         client: {
           id: client.id,
           fullName: client.fullName,
+          avatar: client.avatarAssetId
+            ? {
+                id: client.avatarAssetId,
+                visibility: "PROTECTED",
+                hasAvatar: true,
+              }
+            : null,
           status: client.status,
           onboardingStatus: client.onboardingStatus,
           dateOfBirth: client.dateOfBirth,

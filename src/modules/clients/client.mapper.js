@@ -21,7 +21,13 @@ export function mapClient(client) {
     dateOfBirth: client.dateOfBirth
       ? client.dateOfBirth.toISOString().split('T')[0]
       : null,
-    avatarUrl: client.avatarUrl || null,
+    avatar: client.avatarAssetId
+      ? {
+          id: client.avatarAssetId,
+          visibility: "PROTECTED",
+          hasAvatar: true,
+        }
+      : null,
     notes: client.notes || null,
     status: client.status,
     onboardingStatus: client.onboardingStatus,
