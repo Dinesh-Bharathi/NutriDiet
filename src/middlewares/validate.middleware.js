@@ -11,7 +11,7 @@
 // The schema can validate req.body, req.query, and/or req.params simultaneously.
 // Field-level errors are normalised into the standard error array format.
 // ─────────────────────────────────────────────────────────────────────────────
-import { ZodError } from 'zod';
+
 import ApiError from '../utils/ApiError.js';
 
 /**

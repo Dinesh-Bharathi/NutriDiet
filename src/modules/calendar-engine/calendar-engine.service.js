@@ -1,18 +1,12 @@
 // src/modules/calendar-engine/calendar-engine.service.js
 import prisma from '../../lib/prisma.js';
-
-function getDaysDifference(date1, date2) {
-  const d1 = new Date(date1.getFullYear(), date1.getMonth(), date1.getDate());
-  const d2 = new Date(date2.getFullYear(), date2.getMonth(), date2.getDate());
-  const diffTime = d2.getTime() - d1.getTime();
-  return Math.floor(diffTime / (1000 * 60 * 60 * 24));
-}
+import { getActiveCycleDay } from './calendar.utils.js';
 
 export const calendarEngineService = {
   /**
    * Resolves the cycle day, active cycle, and offset information for a given plan and date.
    */
-  resolveCycleDay(plan, targetDate) {
+  resolveCycleDay(plan, targetDate, providedTimezone) {
     if (!plan || !plan.cycles || plan.cycles.length === 0) {
       return {
         isCycleBased: false,
@@ -22,20 +16,34 @@ export const calendarEngineService = {
       };
     }
 
-    const start = plan.cycleStartDate || plan.startDate || plan.createdAt;
-    const daysElapsed = getDaysDifference(new Date(start), new Date(targetDate));
-    const planDay = daysElapsed + 1;
-
-    // Find active cycle based on startDay
-    const sortedCycles = [...plan.cycles].sort((a, b) => b.startDay - a.startDay);
-    let activeCycle = sortedCycles.find((c) => c.startDay <= planDay);
-    if (!activeCycle) {
-      // Fallback to the earliest starting cycle
-      activeCycle = [...plan.cycles].sort((a, b) => a.startDay - b.startDay)[0];
+    let timezone = providedTimezone || 'UTC';
+    if (!providedTimezone) {
+      if (plan.tenant?.timezone) timezone = plan.tenant.timezone;
+      if (plan.client?.timezone) timezone = plan.client.timezone;
+      if (plan.client?.lifestyleProfile?.metadata) {
+        try {
+          const meta = typeof plan.client.lifestyleProfile.metadata === 'string'
+            ? JSON.parse(plan.client.lifestyleProfile.metadata)
+            : plan.client.lifestyleProfile.metadata;
+          if (meta && meta.timezone) {
+            timezone = meta.timezone;
+          }
+        } catch (e) {
+          // Ignore parsing errors
+        }
+      }
     }
 
-    const activeDays = activeCycle.days ? activeCycle.days.filter((d) => d.isActive) : [];
-    if (activeDays.length === 0) {
+    const start = plan.cycleStartDate || plan.startDate || plan.createdAt;
+    
+    const { planDay, activeCycle, activeDays, index } = getActiveCycleDay(
+      start,
+      targetDate,
+      plan.cycles,
+      timezone
+    );
+
+    if (activeDays.length === 0 || index === -1) {
       return {
         isCycleBased: true,
         cycleDay: null,
@@ -44,9 +52,6 @@ export const calendarEngineService = {
       };
     }
 
-    const cycleDayOffset = planDay - activeCycle.startDay;
-    const offset = Math.max(0, cycleDayOffset);
-    const index = offset % activeDays.length;
     const cycleDay = activeDays[index];
 
     return {
@@ -93,6 +98,12 @@ export const calendarEngineService = {
               },
             },
           },
+        },
+        tenant: { select: { timezone: true } },
+        client: {
+          include: {
+            lifestyleProfile: { select: { metadata: true } }
+          }
         },
       },
     });
@@ -183,6 +194,12 @@ export const calendarEngineService = {
               },
             },
           },
+        },
+        tenant: { select: { timezone: true } },
+        client: {
+          include: {
+            lifestyleProfile: { select: { metadata: true } }
+          }
         },
       },
     });
