@@ -3,9 +3,16 @@
 import { checkInRepository } from './check-in.repository.js';
 import { clientRepository } from '../clients/client.repository.js';
 import { dietPlanRepository } from '../diet-plans/diet-plan.repository.js';
-import { clinicalProfileService } from '../assessments/clinical-profile.service.js';
 import { CHECK_IN_STATUS } from './check-in.constants.js';
 import ApiError from '../../utils/ApiError.js';
+import prisma from '../../lib/prisma.js';
+import logger from '../../utils/logger.js';
+
+function calculateBmi(heightCm, weightKg) {
+  if (!heightCm || !weightKg) return null;
+  const heightM = heightCm / 100;
+  return Math.round((weightKg / (heightM * heightM)) * 100) / 100;
+}
 
 /**
  * Calculates physical measurement changes (deltas) between current and previous check-ins.
@@ -96,48 +103,155 @@ export const checkInService = {
     // 3. Set submittedAt automatically if status is SUBMITTED
     const submittedAt = data.status === CHECK_IN_STATUS.SUBMITTED ? new Date() : null;
 
-    const checkIn = await checkInRepository.create(tenantId, clientId, {
-      ...data,
-      submittedAt,
+    let checkIn;
+
+    await prisma.$transaction(async (tx) => {
+      checkIn = await tx.clientCheckIn.create({
+        data: {
+          ...data,
+          tenantId,
+          clientId,
+          submittedAt,
+        },
+      });
+
+      // Ensure profile V2 exists
+      let profile = await tx.clientClinicalProfile.findFirst({
+        where: { tenantId, clientId, deletedAt: null },
+      });
+
+      if (!profile) {
+        profile = await tx.clientClinicalProfile.create({
+          data: {
+            tenantId,
+            clientId,
+            sectionStatuses: {
+              create: ["ANTHROPOMETRICS", "MEDICAL", "LIFESTYLE", "LABS"].map((section) => ({
+                tenantId,
+                clientId,
+                section,
+                status: 'DRAFT',
+              })),
+            },
+          },
+        });
+      }
+
+      // Create Anthropometric Record if physical measurements exist
+      if (
+        data.weightKg !== undefined ||
+        data.bodyFatPercent !== undefined ||
+        data.waistCm !== undefined ||
+        data.hipCm !== undefined ||
+        data.chestCm !== undefined ||
+        data.armCm !== undefined ||
+        data.thighCm !== undefined ||
+        data.neckCm !== undefined
+      ) {
+        const previous = await tx.clientAnthropometricRecord.findFirst({
+          where: { tenantId, profileId: profile.id, deletedAt: null },
+          orderBy: { measuredAt: 'desc' },
+        });
+        const heightCm = previous?.heightCm ?? null;
+        const bmi = calculateBmi(heightCm, data.weightKg);
+
+        await tx.clientAnthropometricRecord.create({
+          data: {
+            tenantId,
+            clientId,
+            profileId: profile.id,
+            weightKg: data.weightKg,
+            bodyFatPercent: data.bodyFatPercent,
+            waistCm: data.waistCm,
+            hipCm: data.hipCm,
+            chestCm: data.chestCm,
+            armCm: data.armCm,
+            thighCm: data.thighCm,
+            neckCm: data.neckCm,
+            heightCm,
+            bmi,
+            measuredAt: data.checkInDate || new Date(),
+            notes: data.clientNotes ? `From Check-In: ${data.clientNotes}` : 'Created from Check-In',
+          },
+        });
+
+        // Upsert ANTHROPOMETRICS section status to COMPLETED
+        await tx.assessmentSectionStatus.upsert({
+          where: {
+            tenantId_profileId_section: {
+              tenantId,
+              profileId: profile.id,
+              section: 'ANTHROPOMETRICS',
+            },
+          },
+          create: {
+            tenantId,
+            clientId,
+            profileId: profile.id,
+            assessmentId: profile.latestAssessmentId,
+            section: 'ANTHROPOMETRICS',
+            status: 'COMPLETED',
+            completedById: null,
+            completedAt: new Date(),
+          },
+          update: {
+            status: 'COMPLETED',
+            completedById: null,
+            completedAt: new Date(),
+          },
+        });
+      }
+
+      // Create Lifestyle Profile if behavioral measurements exist
+      if (
+        data.sleepHours !== undefined ||
+        data.waterIntakeLiters !== undefined ||
+        data.activityLevel !== undefined
+      ) {
+        await tx.clientLifestyleProfile.upsert({
+          where: { profileId: profile.id },
+          create: {
+            tenantId,
+            clientId,
+            profileId: profile.id,
+            sleepHours: data.sleepHours,
+            hydrationLiters: data.waterIntakeLiters,
+            activityLevel: data.activityLevel,
+          },
+          update: {
+            sleepHours: data.sleepHours,
+            hydrationLiters: data.waterIntakeLiters,
+            activityLevel: data.activityLevel,
+          },
+        });
+
+        // Upsert LIFESTYLE section status to COMPLETED
+        await tx.assessmentSectionStatus.upsert({
+          where: {
+            tenantId_profileId_section: {
+              tenantId,
+              profileId: profile.id,
+              section: 'LIFESTYLE',
+            },
+          },
+          create: {
+            tenantId,
+            clientId,
+            profileId: profile.id,
+            assessmentId: profile.latestAssessmentId,
+            section: 'LIFESTYLE',
+            status: 'COMPLETED',
+            completedById: null,
+            completedAt: new Date(),
+          },
+          update: {
+            status: 'COMPLETED',
+            completedById: null,
+            completedAt: new Date(),
+          },
+        });
+      }
     });
-
-    // Create Anthropometric Record if physical measurements exist
-    if (
-      data.weightKg !== undefined ||
-      data.bodyFatPercent !== undefined ||
-      data.waistCm !== undefined ||
-      data.hipCm !== undefined ||
-      data.chestCm !== undefined ||
-      data.armCm !== undefined ||
-      data.thighCm !== undefined ||
-      data.neckCm !== undefined
-    ) {
-      await clinicalProfileService.createAnthropometricRecord(tenantId, clientId, null, {
-        weightKg: data.weightKg,
-        bodyFatPercent: data.bodyFatPercent,
-        waistCm: data.waistCm,
-        hipCm: data.hipCm,
-        chestCm: data.chestCm,
-        armCm: data.armCm,
-        thighCm: data.thighCm,
-        neckCm: data.neckCm,
-        measuredAt: data.checkInDate || new Date(),
-        notes: data.clientNotes ? `From Check-In: ${data.clientNotes}` : 'Created from Check-In',
-      });
-    }
-
-    // Create Lifestyle Profile if behavioral measurements exist
-    if (
-      data.sleepHours !== undefined ||
-      data.waterIntakeLiters !== undefined ||
-      data.activityLevel !== undefined
-    ) {
-      await clinicalProfileService.upsertLifestyleProfile(tenantId, clientId, null, {
-        sleepHours: data.sleepHours,
-        hydrationLiters: data.waterIntakeLiters,
-        activityLevel: data.activityLevel,
-      });
-    }
 
     // 4. Retrieve delta against previous check-in
     const prev = await checkInRepository.findPreviousCheckIn(tenantId, clientId, checkIn.checkInDate, checkIn.id);
@@ -366,33 +480,110 @@ export const checkInService = {
       updateData.submittedAt = new Date();
     }
 
-    const updated = await checkInRepository.update(id, updateData);
+    let updated;
 
-    // Create Anthropometric Record if check-in is submitted with measurements
-    if (
-      updateData.status === CHECK_IN_STATUS.SUBMITTED &&
-      (updated.weightKg !== null ||
-        updated.bodyFatPercent !== null ||
-        updated.waistCm !== null ||
-        updated.hipCm !== null ||
-        updated.chestCm !== null ||
-        updated.armCm !== null ||
-        updated.thighCm !== null ||
-        updated.neckCm !== null)
-    ) {
-      await clinicalProfileService.createAnthropometricRecord(tenantId, updated.clientId, null, {
-        weightKg: updated.weightKg,
-        bodyFatPercent: updated.bodyFatPercent,
-        waistCm: updated.waistCm,
-        hipCm: updated.hipCm,
-        chestCm: updated.chestCm,
-        armCm: updated.armCm,
-        thighCm: updated.thighCm,
-        neckCm: updated.neckCm,
-        measuredAt: updated.checkInDate || new Date(),
-        notes: updated.clientNotes ? `From Check-In: ${updated.clientNotes}` : 'Submitted via Check-In',
+    await prisma.$transaction(async (tx) => {
+      updated = await tx.clientCheckIn.update({
+        where: { id, tenantId },
+        data: updateData,
+        include: {
+          client: {
+            select: { id: true, firstName: true, lastName: true, email: true },
+          },
+          reviewer: {
+            select: { id: true, firstName: true, lastName: true, email: true },
+          },
+        },
       });
-    }
+
+      // Create Anthropometric Record if check-in is submitted with measurements
+      if (
+        updateData.status === CHECK_IN_STATUS.SUBMITTED &&
+        (updated.weightKg !== null ||
+          updated.bodyFatPercent !== null ||
+          updated.waistCm !== null ||
+          updated.hipCm !== null ||
+          updated.chestCm !== null ||
+          updated.armCm !== null ||
+          updated.thighCm !== null ||
+          updated.neckCm !== null)
+      ) {
+        // Ensure profile V2 exists
+        let profile = await tx.clientClinicalProfile.findFirst({
+          where: { tenantId, clientId: updated.clientId, deletedAt: null },
+        });
+
+        if (!profile) {
+          profile = await tx.clientClinicalProfile.create({
+            data: {
+              tenantId,
+              clientId: updated.clientId,
+              sectionStatuses: {
+                create: ["ANTHROPOMETRICS", "MEDICAL", "LIFESTYLE", "LABS"].map((section) => ({
+                  tenantId,
+                  clientId: updated.clientId,
+                  section,
+                  status: 'DRAFT',
+                })),
+              },
+            },
+          });
+        }
+
+        const previous = await tx.clientAnthropometricRecord.findFirst({
+          where: { tenantId, profileId: profile.id, deletedAt: null },
+          orderBy: { measuredAt: 'desc' },
+        });
+        const heightCm = previous?.heightCm ?? null;
+        const bmi = calculateBmi(heightCm, updated.weightKg);
+
+        await tx.clientAnthropometricRecord.create({
+          data: {
+            tenantId,
+            clientId: updated.clientId,
+            profileId: profile.id,
+            weightKg: updated.weightKg,
+            bodyFatPercent: updated.bodyFatPercent,
+            waistCm: updated.waistCm,
+            hipCm: updated.hipCm,
+            chestCm: updated.chestCm,
+            armCm: updated.armCm,
+            thighCm: updated.thighCm,
+            neckCm: updated.neckCm,
+            heightCm,
+            bmi,
+            measuredAt: updated.checkInDate || new Date(),
+            notes: updated.clientNotes ? `From Check-In: ${updated.clientNotes}` : 'Submitted via Check-In',
+          },
+        });
+
+        // Upsert ANTHROPOMETRICS section status to COMPLETED
+        await tx.assessmentSectionStatus.upsert({
+          where: {
+            tenantId_profileId_section: {
+              tenantId,
+              profileId: profile.id,
+              section: 'ANTHROPOMETRICS',
+            },
+          },
+          create: {
+            tenantId,
+            clientId: updated.clientId,
+            profileId: profile.id,
+            assessmentId: profile.latestAssessmentId,
+            section: 'ANTHROPOMETRICS',
+            status: 'COMPLETED',
+            completedById: null,
+            completedAt: new Date(),
+          },
+          update: {
+            status: 'COMPLETED',
+            completedById: null,
+            completedAt: new Date(),
+          },
+        });
+      }
+    });
 
     const prev = await checkInRepository.findPreviousCheckIn(
       tenantId,
@@ -431,7 +622,7 @@ export const checkInService = {
 
     // TODO: Validate that practitionerNotes is provided when requiresFollowUp is true (optional future block rule)
 
-    const updated = await checkInRepository.update(id, {
+    const updated = await checkInRepository.update(tenantId, id, {
       status: CHECK_IN_STATUS.REVIEWED,
       practitionerNotes: reviewData.practitionerNotes,
       reviewedAt: new Date(),
@@ -474,8 +665,6 @@ export const checkInService = {
     // Soft-delete the corresponding anthropometric record created by this check-in
     // We match by identical timestamp (checkInDate) and notes prefix.
     try {
-      const { PrismaClient } = await import('@prisma/client');
-      const prisma = new PrismaClient();
       await prisma.clientAnthropometricRecord.updateMany({
         where: {
           tenantId,
@@ -490,7 +679,7 @@ export const checkInService = {
         },
       });
     } catch (error) {
-      console.error('Failed to soft-delete linked anthropometric record:', error);
+      logger.error('Failed to soft-delete linked anthropometric record:', error);
     }
   },
 };

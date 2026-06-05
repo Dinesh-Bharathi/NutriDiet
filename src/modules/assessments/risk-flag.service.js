@@ -1,6 +1,4 @@
 // src/modules/assessments/risk-flag.service.js
-import { clinicalProfileRepository } from './clinical-profile.repository.js';
-import { clientRepository } from '../clients/client.repository.js';
 import ApiError from '../../utils/ApiError.js';
 import prisma from '../../lib/prisma.js';
 

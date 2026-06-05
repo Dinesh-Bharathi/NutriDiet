@@ -94,7 +94,10 @@ export const dietPlanTemplateRepository = {
     const take = limit;
 
     const where = {
-      tenantId,
+      OR: [
+        { tenantId },
+        { isPublic: true, tenantId: 'SYSTEM' },
+      ],
       deletedAt: null,
     };
 

@@ -5,6 +5,7 @@ import { clientRepository } from '../clients/client.repository.js';
 import { assessmentRepository } from '../assessments/assessment.repository.js';
 import ApiError from '../../utils/ApiError.js';
 import prisma from '../../lib/prisma.js';
+import { clinicalProfileService } from '../assessments/clinical-profile.service.js';
 
 // Helper to check if a plan is archived
 function checkNotArchived(dietPlan) {
@@ -51,21 +52,14 @@ export const dietPlanService = {
 
     // 2.5 Verify or auto-resolve goal profile
     if (!data.goalProfileId) {
-      const activeGoals = await prisma.clientGoalProfile.findMany({
-        where: { tenantId, clientId, status: 'ACTIVE', deletedAt: null }
-      });
-      if (activeGoals.length === 1) {
-        data.goalProfileId = activeGoals[0].id;
-      } else if (activeGoals.length === 0) {
+      const activeGoal = await clinicalProfileService.getActiveGoal(tenantId, clientId);
+      if (!activeGoal) {
         throw ApiError.badRequest('Client has no active goal profile. A goal profile is required to create a diet plan.');
-      } else {
-        throw ApiError.badRequest('Client has multiple active goal profiles. Please specify one explicitly.');
       }
+      data.goalProfileId = activeGoal.id;
     }
     
-    const goalProfile = await prisma.clientGoalProfile.findFirst({
-      where: { id: data.goalProfileId, tenantId, clientId, deletedAt: null }
-    });
+    const goalProfile = await clinicalProfileService.getGoalProfileById(tenantId, clientId, data.goalProfileId);
     if (!goalProfile) {
       throw ApiError.badRequest('Goal Profile must exist and belong to the client');
     }
@@ -130,9 +124,7 @@ export const dietPlanService = {
 
     // 3.5 Verify goal profile if updated
     if (updateData.goalProfileId) {
-      const goalProfile = await prisma.clientGoalProfile.findFirst({
-        where: { id: updateData.goalProfileId, tenantId: existing.tenantId, clientId: existing.clientId, deletedAt: null }
-      });
+      const goalProfile = await clinicalProfileService.getGoalProfileById(tenantId, existing.clientId, updateData.goalProfileId);
       if (!goalProfile) {
         throw ApiError.badRequest('Goal Profile must exist and belong to the client');
       }
@@ -147,7 +139,7 @@ export const dietPlanService = {
       await checkActivePlanCollision(tenantId, existing.clientId, id, finalStart, finalEnd);
     }
 
-    return dietPlanRepository.update(id, updateData);
+    return dietPlanRepository.update(tenantId, id, updateData);
   },
 
   async deleteDietPlan(tenantId, id) {
@@ -233,12 +225,14 @@ export const dietPlanService = {
       data.sourceType = food.sourceType;
     }
 
-    const createdItem = await dietPlanRepository.createMealItem(mealId, data);
+    return prisma.$transaction(async (tx) => {
+      const createdItem = await dietPlanRepository.createMealItem(mealId, data, tx);
 
-    // Auto-aggregate macros
-    await dietPlanRepository.recalculatePlanNutrition(meal.dietPlanId);
+      // Auto-aggregate macros
+      await dietPlanRepository.recalculatePlanNutrition(meal.dietPlanId, tx);
 
-    return createdItem;
+      return createdItem;
+    });
   },
 
   async updateMealItem(tenantId, itemId, data) {
@@ -268,12 +262,14 @@ export const dietPlanService = {
       data.sourceType = food.sourceType;
     }
 
-    const updatedItem = await dietPlanRepository.updateMealItem(itemId, data);
+    return prisma.$transaction(async (tx) => {
+      const updatedItem = await dietPlanRepository.updateMealItem(itemId, data, tx);
 
-    // Auto-aggregate macros
-    await dietPlanRepository.recalculatePlanNutrition(item.meal.dietPlanId);
+      // Auto-aggregate macros
+      await dietPlanRepository.recalculatePlanNutrition(item.meal.dietPlanId, tx);
 
-    return updatedItem;
+      return updatedItem;
+    });
   },
 
   async deleteMealItem(tenantId, itemId) {
@@ -286,9 +282,11 @@ export const dietPlanService = {
     // Lock archived plans
     checkNotArchived(item.meal?.dietPlan);
 
-    await dietPlanRepository.deleteMealItem(itemId);
+    await prisma.$transaction(async (tx) => {
+      await dietPlanRepository.deleteMealItem(itemId, tx);
 
-    // Auto-aggregate macros
-    await dietPlanRepository.recalculatePlanNutrition(item.meal.dietPlanId);
+      // Auto-aggregate macros
+      await dietPlanRepository.recalculatePlanNutrition(item.meal.dietPlanId, tx);
+    });
   },
 };

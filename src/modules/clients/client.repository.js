@@ -59,13 +59,14 @@ export const clientRepository = {
   /**
    * Updates a client. Assumes tenant validation was performed.
    *
+   * @param {string} tenantId
    * @param {string} id
    * @param {object} data
    * @returns {Promise<object>}
    */
-  async update(id, data) {
+  async update(tenantId, id, data) {
     return prisma.client.update({
-      where: { id },
+      where: { id, tenantId },
       data,
       include: {
         dietitian: {

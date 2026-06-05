@@ -123,9 +123,9 @@ export const dietPlanRepository = {
     return [dietPlans, total];
   },
 
-  async update(id, data) {
+  async update(tenantId, id, data) {
     return prisma.dietPlan.update({
-      where: { id },
+      where: { id, tenantId },
       data,
       include: {
         creator: {
@@ -235,8 +235,8 @@ export const dietPlanRepository = {
   },
 
   // ─── Meal Item Operations ──────────────────────────────────────────────────
-  async createMealItem(mealId, data) {
-    return prisma.dietPlanMealItem.create({
+  async createMealItem(mealId, data, tx = prisma) {
+    return tx.dietPlanMealItem.create({
       data: {
         ...data,
         mealId,
@@ -265,24 +265,25 @@ export const dietPlanRepository = {
     });
   },
 
-  async updateMealItem(itemId, data) {
-    return prisma.dietPlanMealItem.update({
+  async updateMealItem(itemId, data, tx = prisma) {
+    return tx.dietPlanMealItem.update({
       where: { id: itemId },
       data,
     });
   },
 
-  async deleteMealItem(itemId) {
-    return prisma.dietPlanMealItem.delete({
+  async deleteMealItem(itemId, tx = prisma) {
+    return tx.dietPlanMealItem.delete({
       where: { id: itemId },
     });
   },
 
-  async recalculatePlanNutrition(dietPlanId) {
-    const aggregations = await prisma.dietPlanMealItem.aggregate({
+  async recalculatePlanNutrition(dietPlanId, tx = prisma) {
+    const aggregations = await tx.dietPlanMealItem.aggregate({
       where: {
         meal: {
           dietPlanId,
+          cycleDayId: null,
         },
       },
       _sum: {
@@ -295,7 +296,7 @@ export const dietPlanRepository = {
 
     const sum = aggregations._sum;
 
-    return prisma.dietPlan.update({
+    return tx.dietPlan.update({
       where: { id: dietPlanId },
       data: {
         totalCalories: Math.round(sum.calories || 0),

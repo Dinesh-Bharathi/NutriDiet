@@ -81,7 +81,7 @@ export const clientService = {
       await this.validateDietitian(tenantId, updateData.dietitianId);
     }
 
-    return clientRepository.update(id, updateData);
+    return clientRepository.update(tenantId, id, updateData);
   },
 
   /**
@@ -158,7 +158,7 @@ export const clientService = {
       }
     }
 
-    return clientRepository.update(clientId, { avatarAssetId: fileAssetId });
+    return clientRepository.update(tenantId, clientId, { avatarAssetId: fileAssetId });
   },
 
   /**
@@ -181,7 +181,7 @@ export const clientService = {
       } catch (err) {
         // Ignore if already deleted
       }
-      return clientRepository.update(clientId, { avatarAssetId: null });
+      return clientRepository.update(tenantId, clientId, { avatarAssetId: null });
     }
     
     return client;

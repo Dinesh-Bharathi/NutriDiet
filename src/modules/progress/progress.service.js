@@ -202,8 +202,10 @@ export const progressService = {
       return {
         currentWeight: null,
         startingWeight: null,
-        weightChange: null,
+        netChange: null,
         weightTrend: 'STABLE',
+        baselineDate: null,
+        latestDate: null,
         currentWaist: null,
         startingWaist: null,
         waistChange: null,
@@ -294,7 +296,29 @@ export const progressService = {
       };
     };
 
-    const weightSummary = getSummaryField('weightKg', anthropometrics);
+    // 1. Establish the Clinical Baseline (Earliest Record)
+    const baselineRecord = await prisma.clientAnthropometricRecord.findFirst({
+      where: { tenantId, clientId, weightKg: { not: null }, deletedAt: null },
+      orderBy: { measuredAt: 'asc' },
+      select: { weightKg: true, measuredAt: true }
+    });
+
+    // 2. Establish the Current State (Latest Record)
+    const currentRecord = await prisma.clientAnthropometricRecord.findFirst({
+      where: { tenantId, clientId, weightKg: { not: null }, deletedAt: null },
+      orderBy: { measuredAt: 'desc' },
+      select: { weightKg: true, measuredAt: true }
+    });
+
+    const startingWeight = baselineRecord?.weightKg || null;
+    const currentWeight = currentRecord?.weightKg || null;
+    
+    // 3. Execute the SSoT Calculation
+    let netChange = null;
+    if (startingWeight !== null && currentWeight !== null) {
+      netChange = Number((currentWeight - startingWeight).toFixed(2));
+    }
+
     const waistSummary = getSummaryField('waistCm', anthropometrics);
     const hipSummary = getSummaryField('hipCm', anthropometrics);
     const chestSummary = getSummaryField('chestCm', anthropometrics);
@@ -311,10 +335,12 @@ export const progressService = {
     };
 
     return {
-      currentWeight: weightSummary.current,
-      startingWeight: weightSummary.start,
-      weightChange: weightSummary.change,
-      weightTrend: weightSummary.trend,
+      currentWeight,
+      startingWeight,
+      netChange,
+      weightTrend: getTrendDirection(netChange),
+      baselineDate: baselineRecord?.measuredAt || null,
+      latestDate: currentRecord?.measuredAt || null,
 
       currentWaist: waistSummary.current,
       startingWaist: waistSummary.start,

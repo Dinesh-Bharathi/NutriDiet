@@ -12,7 +12,7 @@ export const readinessService = {
     const [
       anthropometrics,
       goals,
-      lifestyle,
+      ,
       labResults,
       riskFlags,
     ] = await Promise.all([

@@ -14,25 +14,30 @@ async function validateEntityOwnership(tenantId, entityType, entityId) {
   let entityExists = false;
 
   switch (entityType) {
-    case FILE_ENTITY_TYPE.TENANT:
+    case FILE_ENTITY_TYPE.TENANT: {
       entityExists = (tenantId === entityId);
       break;
-    case FILE_ENTITY_TYPE.USER:
+    }
+    case FILE_ENTITY_TYPE.USER: {
       const user = await prisma.user.findFirst({ where: { id: entityId, tenantId, deletedAt: null } });
       entityExists = !!user;
       break;
-    case FILE_ENTITY_TYPE.CLIENT:
+    }
+    case FILE_ENTITY_TYPE.CLIENT: {
       const client = await prisma.client.findFirst({ where: { id: entityId, tenantId, deletedAt: null } });
       entityExists = !!client;
       break;
-    case FILE_ENTITY_TYPE.ASSESSMENT:
+    }
+    case FILE_ENTITY_TYPE.ASSESSMENT: {
       const assessment = await prisma.assessment.findFirst({ where: { id: entityId, tenantId, deletedAt: null } });
       entityExists = !!assessment;
       break;
-    case FILE_ENTITY_TYPE.DIET_PLAN:
+    }
+    case FILE_ENTITY_TYPE.DIET_PLAN: {
       const dietPlan = await prisma.dietPlan.findFirst({ where: { id: entityId, tenantId, deletedAt: null } });
       entityExists = !!dietPlan;
       break;
+    }
     // For future modules (Package, Program, etc.), we bypass strict db check if tables don't exist yet, 
     // or we throw an error if they shouldn't be used yet. For now, we allow them to pass to support Phase 10.
     default:

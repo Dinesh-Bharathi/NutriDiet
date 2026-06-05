@@ -26,11 +26,14 @@ export const progressMapper = {
    * @returns {object}
    */
   mapProgressSummary(summary) {
+    if (!summary) return null;
+
     return {
       currentWeight: summary.currentWeight,
       startingWeight: summary.startingWeight,
-      weightChange: summary.weightChange,
-      weightTrend: summary.weightTrend,
+      netChange: summary.netChange,
+      baselineDate: summary.baselineDate,
+      latestDate: summary.latestDate,
 
       currentWaist: summary.currentWaist,
       startingWaist: summary.startingWaist,

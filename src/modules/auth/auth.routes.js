@@ -78,10 +78,6 @@ router.post("/logout", asyncHandler(authController.logout));
 router.get(
   "/me",
   authenticate,
-  (req, res, next) => {
-    console.log("Authentication successful");
-    next();
-  },
   asyncHandler(authController.me),
 );
 

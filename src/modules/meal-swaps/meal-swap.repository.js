@@ -1,7 +1,5 @@
 // src/modules/meal-swaps/meal-swap.repository.js
 import prisma from '../../lib/prisma.js';
-import { dietPlanRepository } from '../diet-plans/diet-plan.repository.js';
-import { dietPlanTemplateRepository } from '../diet-plan-templates/diet-plan-template.repository.js';
 
 export const mealSwapRepository = {
   /**

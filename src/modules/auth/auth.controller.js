@@ -40,7 +40,6 @@ export const authController = {
   async login(req, res) {
     const meta = { ipAddress: req.ip, userAgent: req.headers["user-agent"] };
 
-    console.log("Login request received", req.body);
 
     const { user, tenant, accessToken, refreshToken } = await authService.login(
       req.body,
@@ -99,7 +98,7 @@ export const authController = {
    * req.user is populated by the authenticate middleware — tenantId from JWT only.
    */
   async me(req, res) {
-    console.log("Me request received", req.user);
+
     const { user, tenant } = await authService.getCurrentUser(
       req.user.userId,
       req.user.tenantId,

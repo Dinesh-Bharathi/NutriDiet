@@ -56,7 +56,7 @@ function handlePrismaError(err) {
  */
 // eslint-disable-next-line no-unused-vars
 export function errorMiddleware(err, req, res, next) {
-  console.log(err, "err");
+  logger.error(err.message, { stack: err.stack });
   let error = err;
 
   // ── Prisma known request errors ──────────────────────────────────────────

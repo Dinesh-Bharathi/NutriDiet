@@ -105,13 +105,14 @@ export const assessmentRepository = {
   /**
    * Updates an assessment. Assumes tenant validation was performed.
    *
+   * @param {string} tenantId
    * @param {string} id
    * @param {object} data
    * @returns {Promise<object>}
    */
-  async update(id, data) {
+  async update(tenantId, id, data) {
     return prisma.assessment.update({
-      where: { id },
+      where: { id, tenantId },
       data,
       include: {
         creator: {

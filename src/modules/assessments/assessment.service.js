@@ -5,6 +5,7 @@ import { clientRepository } from "../clients/client.repository.js";
 import { clinicalProfileService } from "./clinical-profile.service.js";
 import ApiError from "../../utils/ApiError.js";
 import prisma from "../../lib/prisma.js";
+import logger from "../../utils/logger.js";
 
 /**
  * Calculates BMI based on height in centimeters and weight in kilograms.
@@ -182,7 +183,7 @@ export const assessmentService = {
     // 6. Generate Snapshot (background)
     clinicalProfileService
       .generateSnapshot(tenantId, clientId, creatorId)
-      .catch(console.error);
+      .catch((err) => logger.error("Failed to generate clinical snapshot:", err));
 
     // 7. Activity Timeline Event (Optional/Future implementation)
     // 8. Recalculate Readiness (Future implementation)
@@ -252,22 +253,15 @@ export const assessmentService = {
       throw ApiError.notFound("Assessment");
     }
 
-    // 2. If height or weight is being modified, recalculate BMI
-    const heightCm =
-      updateData.heightCm !== undefined
-        ? updateData.heightCm
-        : existing.heightCm;
-    const weightKg =
-      updateData.weightKg !== undefined
-        ? updateData.weightKg
-        : existing.weightKg;
+    // Restrict updateData to metadata fields only (title, notes, assessmentDate)
+    const allowedMetadata = {};
+    if (updateData.title !== undefined) allowedMetadata.title = updateData.title;
+    if (updateData.notes !== undefined) allowedMetadata.notes = updateData.notes;
+    if (updateData.assessmentDate !== undefined) {
+      allowedMetadata.assessmentDate = updateData.assessmentDate ? new Date(updateData.assessmentDate) : null;
+    }
 
-    const bmi = calculateBmi(heightCm, weightKg);
-
-    return assessmentRepository.update(id, {
-      ...updateData,
-      bmi,
-    });
+    return assessmentRepository.update(tenantId, id, allowedMetadata);
   },
 
   /**

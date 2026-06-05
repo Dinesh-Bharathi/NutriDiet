@@ -166,7 +166,7 @@ export const dashboardRepository = {
     }));
   },
 
-  async getActionCenterItems(tenantId, userId) {
+  async getActionCenterItems(tenantId, _userId) {
     const [pendingReviews, overdueCheckIns, highRiskClients, missingAssessments, upcomingFollowUps] =
       await Promise.all([
         // Pending Reviews — SUBMITTED check-ins with client info
