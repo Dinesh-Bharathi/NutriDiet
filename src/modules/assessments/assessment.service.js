@@ -22,9 +22,25 @@ function calculateBmi(heightCm, weightKg) {
   return Math.round(bmi * 100) / 100;
 }
 
+/**
+ * Decomposes a legacy flat comma-separated string into a trimmed, non-empty
+ * array of values for relational createMany ingestion.
+ *
+ * @param {string|null|undefined} str
+ * @returns {string[]}
+ */
+const parseCsv = (str) =>
+  str ? str.split(',').map((s) => s.trim()).filter(Boolean) : [];
+
 export const assessmentService = {
   /**
    * Creates a new assessment for a client.
+   *
+   * STRICT ARCHITECTURAL ENFORCEMENT: Atomic V1-to-V2 Synchronization.
+   * Writes the flat Assessment payload (V1 log) then fans out to seed each
+   * deeply nested SSoT ledger (V2 relational tables) within a single
+   * Prisma transaction, ensuring Medical History, Anthropometrics, Lifestyle,
+   * and Goal screens always reflect the intake data immediately.
    *
    * @param {string} tenantId
    * @param {string} clientId
@@ -45,7 +61,7 @@ export const assessmentService = {
 
     await prisma.$transaction(
       async (tx) => {
-        // 1. Create Assessment Record
+        // 1. Create the Immutable V1 Assessment Log
         assessment = await tx.assessment.create({
           data: {
             tenantId,
@@ -72,7 +88,7 @@ export const assessmentService = {
           },
         });
 
-        // 2. Ensure Clinical Profile V2
+        // 2. Bootstrap or Update the V2 Clinical Profile SSoT
         let profile = await tx.clientClinicalProfile.findFirst({
           where: { tenantId, clientId, deletedAt: null },
         });
@@ -105,7 +121,7 @@ export const assessmentService = {
         }
         profileId = profile.id;
 
-        // 3. Create Initial Anthropometric Record
+        // 3. Seed the Anthropometric Ledger (Repairs the Progress Screen)
         if (data.weightKg || data.heightCm || data.waistCm) {
           await tx.clientAnthropometricRecord.create({
             data: {
@@ -114,21 +130,65 @@ export const assessmentService = {
               profileId,
               assessmentId: assessment.id,
               measuredAt: assessment.assessmentDate,
-              weightKg: data.weightKg,
-              heightCm: data.heightCm,
-              waistCm: data.waistCm,
-              hipCm: data.hipCm,
-              chestCm: data.chestCm,
-              armCm: data.armCm,
-              thighCm: data.thighCm,
-              bodyFatPercent: data.bodyFatPercent,
-              leanMassKg: data.leanMassKg,
+              weightKg: data.weightKg ?? null,
+              heightCm: data.heightCm ?? null,
+              waistCm: data.waistCm ?? null,
+              hipCm: data.hipCm ?? null,
+              chestCm: data.chestCm ?? null,
+              armCm: data.armCm ?? null,
+              thighCm: data.thighCm ?? null,
+              bodyFatPercent: data.bodyFatPercent ?? null,
+              leanMassKg: data.leanMassKg ?? null,
               bmi,
+              notes: 'Initial Intake Baseline',
             },
           });
         }
 
-        // 4. Create Goal Profile
+        // 4. Seed the Medical History SSoT (Repairs the Clinical Profile Screen)
+        // Decomposes flat CSV strings into individual relational rows so the
+        // Medical History, Conditions, Allergies, and Medications screens
+        // always have queryable, filterable records from the first assessment.
+        const conditions = parseCsv(data.medicalConditions);
+        if (conditions.length > 0) {
+          await tx.clientCondition.createMany({
+            data: conditions.map((name) => ({
+              tenantId,
+              clientId,
+              profileId,
+              assessmentId: assessment.id,
+              name,
+            })),
+          });
+        }
+
+        const allergies = parseCsv(data.allergies);
+        if (allergies.length > 0) {
+          await tx.clientAllergy.createMany({
+            data: allergies.map((allergen) => ({
+              tenantId,
+              clientId,
+              profileId,
+              assessmentId: assessment.id,
+              allergen,
+            })),
+          });
+        }
+
+        const medications = parseCsv(data.medications);
+        if (medications.length > 0) {
+          await tx.clientMedication.createMany({
+            data: medications.map((name) => ({
+              tenantId,
+              clientId,
+              profileId,
+              assessmentId: assessment.id,
+              name,
+            })),
+          });
+        }
+
+        // 5. Seed Goal Profile (with version-chain management)
         if (data.goalType) {
           await tx.clientGoalProfile.updateMany({
             where: { tenantId, profileId, status: "ACTIVE" },
@@ -139,6 +199,7 @@ export const assessmentService = {
             (await tx.clientGoalProfile.count({
               where: { tenantId, profileId },
             })) + 1;
+
           await tx.clientGoalProfile.create({
             data: {
               tenantId,
@@ -148,12 +209,12 @@ export const assessmentService = {
               versionNumber: nextVersion,
               goalType: data.goalType,
               status: "ACTIVE",
-              notes: data.goal,
+              notes: data.goal ?? null,
             },
           });
         }
 
-        // 5. Create Lifestyle Profile
+        // 6. Seed Lifestyle Profile
         if (data.activityLevel || data.sleepHours || data.waterIntakeLiters) {
           await tx.clientLifestyleProfile.upsert({
             where: { profileId },
@@ -161,14 +222,16 @@ export const assessmentService = {
               tenantId,
               clientId,
               profileId,
-              activityLevel: data.activityLevel,
-              sleepHours: data.sleepHours,
-              hydrationLiters: data.waterIntakeLiters,
+              assessmentId: assessment.id,
+              activityLevel: data.activityLevel ?? null,
+              sleepHours: data.sleepHours ?? null,
+              hydrationLiters: data.waterIntakeLiters ?? null,
             },
             update: {
-              activityLevel: data.activityLevel,
-              sleepHours: data.sleepHours,
-              hydrationLiters: data.waterIntakeLiters,
+              assessmentId: assessment.id,
+              activityLevel: data.activityLevel ?? null,
+              sleepHours: data.sleepHours ?? null,
+              hydrationLiters: data.waterIntakeLiters ?? null,
             },
           });
         }
@@ -180,13 +243,13 @@ export const assessmentService = {
     );
 
     // POST-COMMIT ASYNC ACTIONS
-    // 6. Generate Snapshot (background)
+    // 7. Generate Snapshot (background — fires after transaction commits)
     clinicalProfileService
       .generateSnapshot(tenantId, clientId, creatorId)
       .catch((err) => logger.error("Failed to generate clinical snapshot:", err));
 
-    // 7. Activity Timeline Event (Optional/Future implementation)
-    // 8. Recalculate Readiness (Future implementation)
+    // 8. Activity Timeline Event (Optional/Future implementation)
+    // 9. Recalculate Readiness (Future implementation)
 
     return assessment;
   },

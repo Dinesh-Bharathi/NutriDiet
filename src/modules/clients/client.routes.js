@@ -170,4 +170,10 @@ router.get(
   asyncHandler(progressController.getClientProgressSnapshot)
 );
 
+// GET /api/v1/clients/:clientId/progress-dashboard - Full SSoT dashboard (summary + charts + lifestyle)
+router.get(
+  '/:clientId/progress-dashboard',
+  asyncHandler(progressController.getFullProgressDashboard)
+);
+
 export default router;

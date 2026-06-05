@@ -25,7 +25,7 @@ export async function seedTemplates(tenants, users, foodLibraryResults) {
       {
         title: 'High Protein 2000 kcal',
         description: 'Designed for active individuals looking to build lean muscle mass.',
-        goal: 'Muscle Gain',
+        goalType: 'MUSCLE_GAIN',
         dailyCalories: 2000,
         proteinGrams: 160,
         carbGrams: 180,
@@ -150,7 +150,7 @@ export async function seedTemplates(tenants, users, foodLibraryResults) {
       {
         title: 'Fat Loss 1800 kcal',
         description: 'Optimized for healthy weight reduction without compromising lean tissue.',
-        goal: 'Fat Loss',
+        goalType: 'WEIGHT_LOSS',
         dailyCalories: 1800,
         proteinGrams: 150,
         carbGrams: 150,
@@ -263,7 +263,7 @@ export async function seedTemplates(tenants, users, foodLibraryResults) {
       {
         title: 'Vegetarian Balance Plan',
         description: 'A nutritionally complete, plant-based routine focusing on protein synergy.',
-        goal: 'Diabetes Management',
+        goalType: 'MEDICAL_NUTRITION',
         dailyCalories: 1750,
         proteinGrams: 105,
         carbGrams: 190,
@@ -384,7 +384,7 @@ export async function seedTemplates(tenants, users, foodLibraryResults) {
           createdBy: creatorId,
           title: tData.title,
           description: tData.description,
-          goal: tData.goal,
+          goalType: tData.goalType ?? null,
           dailyCalories: tData.dailyCalories,
           proteinGrams: tData.proteinGrams,
           carbGrams: tData.carbGrams,
@@ -393,6 +393,7 @@ export async function seedTemplates(tenants, users, foodLibraryResults) {
           totalProtein: tData.proteinGrams,
           totalCarbs: tData.carbGrams,
           totalFat: tData.fatGrams,
+          isPublic: true,
         },
       });
 
@@ -447,7 +448,7 @@ export async function seedTemplates(tenants, users, foodLibraryResults) {
                   mealId: meal.id,
                   foodLibraryId: matchedFood?.id || null,
                   foodName: iData.foodName,
-                  sourceType: 'CUSTOM',
+                  sourceType: matchedFood ? 'SYSTEM' : 'CUSTOM',
                   quantity: iData.qty,
                   unit: iData.unit,
                   calories,

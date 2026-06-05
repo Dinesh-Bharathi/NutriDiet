@@ -76,4 +76,22 @@ export const progressController = {
       progressMapper.mapReviewDashboard(dashboard)
     );
   },
+  /**
+   * GET /api/v1/clients/:clientId/progress-dashboard
+   * Single-shot full progress dashboard: summary + anthropometric chart + lifestyle timeline.
+   * Independent of check-in status — renders SSoT baseline with 0 check-ins.
+   */
+  async getFullProgressDashboard(req, res) {
+    const tenantId = req.user.tenantId;
+    const { clientId } = req.params;
+
+    const dashboard = await progressService.getFullProgressDashboard(tenantId, clientId);
+
+    return sendSuccess(
+      res,
+      HTTP_STATUS.OK,
+      'Client progress dashboard retrieved successfully',
+      dashboard
+    );
+  },
 };

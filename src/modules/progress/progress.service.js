@@ -128,18 +128,43 @@ function calculateMeasurementTrends(anthropometrics) {
 }
 
 /**
- * Processes list of check-ins into chronological lifestyle trends (sleep, water).
+ * Builds a polymorphic, chronologically-sorted lifestyle timeline by unioning
+ * the Assessment T=0 baseline with subsequent check-in self-reports.
  *
- * @param {Array<object>} checkIns - Sorted chronologically (asc)
+ * This severs the Progress UI's hard dependency on `client_check_ins` so a
+ * client with exactly 1 Assessment and 0 check-ins renders the SSoT baseline
+ * on the Lifestyle chart immediately after intake.
+ *
+ * Output shape matches the LifestyleTrendChart contract:
+ *   { date: string, sleepHours: number|null, waterIntakeLiters: number|null, source: 'ASSESSMENT'|'CHECK_IN' }
+ *
+ * @param {Array<object>} assessments - Assessment records with sleepHours / waterIntakeLiters
+ * @param {Array<object>} checkIns    - Check-in records with sleepHours / waterIntakeLiters
  * @returns {Array<object>}
  */
-function calculateLifestyleTrends(checkIns) {
-  return checkIns.map((c) => ({
-    date: c.checkInDate.toISOString().split('T')[0],
-    sleepHours: c.sleepHours ?? null,
-    waterIntakeLiters: c.waterIntakeLiters ?? null,
-    exerciseDays: c.exerciseDays ?? null,
-  }));
+function buildLifestyleTimeline(assessments, checkIns) {
+  const assessmentPoints = assessments
+    .filter((a) => a.sleepHours != null || a.waterIntakeLiters != null)
+    .map((a) => ({
+      date: new Date(a.assessmentDate).toISOString().split('T')[0],
+      sleepHours: a.sleepHours ?? null,
+      waterIntakeLiters: a.waterIntakeLiters ?? null,
+      exerciseDays: null,
+      source: 'ASSESSMENT',
+    }));
+
+  const checkInPoints = checkIns
+    .filter((c) => c.sleepHours != null || c.waterIntakeLiters != null)
+    .map((c) => ({
+      date: new Date(c.checkInDate).toISOString().split('T')[0],
+      sleepHours: c.sleepHours ?? null,
+      waterIntakeLiters: c.waterIntakeLiters ?? null,
+      exerciseDays: c.exerciseDays ?? null,
+      source: 'CHECK_IN',
+    }));
+
+  return [...assessmentPoints, ...checkInPoints]
+    .sort((a, b) => new Date(a.date) - new Date(b.date));
 }
 
 /**
@@ -170,14 +195,23 @@ export const progressService = {
       throw ApiError.notFound('Client');
     }
 
-    const checkIns = await progressRepository.findClientCheckIns(tenantId, clientId, 'asc');
-    const anthropometrics = await progressRepository.findClientAnthropometricRecords(tenantId, clientId, 'asc');
+    // Fetch both data sources in parallel for efficiency
+    const [anthropometrics, checkIns, assessments] = await Promise.all([
+      progressRepository.findClientAnthropometricRecords(tenantId, clientId, 'asc'),
+      progressRepository.findClientCheckIns(tenantId, clientId, 'asc'),
+      prisma.assessment.findMany({
+        where: { tenantId, clientId, deletedAt: null },
+        orderBy: { assessmentDate: 'asc' },
+        select: { assessmentDate: true, sleepHours: true, waterIntakeLiters: true },
+      }),
+    ]);
 
     return {
       weightTrends: calculateWeightTrends(anthropometrics),
       bmiTrends: calculateBmiTrends(anthropometrics),
       measurementTrends: calculateMeasurementTrends(anthropometrics),
-      lifestyleTrends: calculateLifestyleTrends(checkIns),
+      // Polymorphic union: Assessment T=0 baseline + check-in self-reports
+      lifestyleTrends: buildLifestyleTimeline(assessments, checkIns),
       adherenceTrends: calculateAdherenceTrends(checkIns),
     };
   },
@@ -195,44 +229,17 @@ export const progressService = {
       throw ApiError.notFound('Client');
     }
 
-    const checkIns = await progressRepository.findClientCheckIns(tenantId, clientId, 'asc');
-    const anthropometrics = await progressRepository.findClientAnthropometricRecords(tenantId, clientId, 'asc');
+    // Fetch anthropometrics and check-ins in parallel. Check-ins are NOT required
+    // for summary computation — anthropometrics are the SSoT for body metrics.
+    const [anthropometrics, checkIns] = await Promise.all([
+      progressRepository.findClientAnthropometricRecords(tenantId, clientId, 'asc'),
+      progressRepository.findClientCheckIns(tenantId, clientId, 'asc'),
+    ]);
 
-    if (checkIns.length === 0) {
-      return {
-        currentWeight: null,
-        startingWeight: null,
-        netChange: null,
-        weightTrend: 'STABLE',
-        baselineDate: null,
-        latestDate: null,
-        currentWaist: null,
-        startingWaist: null,
-        waistChange: null,
-        waistTrend: 'STABLE',
-        currentHip: null,
-        startingHip: null,
-        hipChange: null,
-        hipTrend: 'STABLE',
-        currentChest: null,
-        startingChest: null,
-        chestChange: null,
-        chestTrend: 'STABLE',
-        currentArm: null,
-        startingArm: null,
-        armChange: null,
-        armTrend: 'STABLE',
-        currentThigh: null,
-        startingThigh: null,
-        thighChange: null,
-        thighTrend: 'STABLE',
-        averageSleep: null,
-        averageWater: null,
-        averageAdherence: null,
-        lastCheckInDate: null,
-        checkInCount: 0,
-      };
-    }
+    // NOTE: Removed the `if (checkIns.length === 0) return early-exit` guard.
+    // Summary cards (weight, measurements) are sourced exclusively from the SSoT
+    // ClientAnthropometricRecord ledger seeded at assessment intake.
+    // A client with 0 check-ins but 1 Assessment will still render correct values.
 
     const latest = checkIns[checkIns.length - 1];
     const lastCheckInDate = latest ? latest.checkInDate.toISOString().split('T')[0] : null;
@@ -512,6 +519,82 @@ export const progressService = {
       lowAdherenceClients,
       weightStalledClients,
       reviewCompletionRate,
+    };
+  },
+
+  /**
+   * Full Progress Dashboard Aggregator — single-shot endpoint.
+   *
+   * Fetches SSoT summary + anthropometric timeline + polymorphic lifestyle
+   * timeline in one parallelised payload, independent of check-in status.
+   *
+   * A client with exactly 1 Assessment and 0 check-ins will receive:
+   *   - summary: live anthropometric baseline values from the SSoT ledger
+   *   - chartData.anthropometrics: [{ measuredAt, weightKg, bmi, ... }]
+   *   - chartData.lifestyle: [{ date, sleepHours, waterIntakeLiters, source: 'ASSESSMENT' }]
+   *
+   * @param {string} tenantId
+   * @param {string} clientId
+   * @returns {Promise<object>}
+   */
+  async getFullProgressDashboard(tenantId, clientId) {
+    const client = await clientRepository.findById(tenantId, clientId);
+    if (!client) {
+      throw ApiError.notFound('Client');
+    }
+
+    // 1. Parallelise all three data sources — no serial waterfall
+    const [summary, anthropometricRecords, assessments, checkIns] = await Promise.all([
+      // SSoT summary (starting / current / net) — already check-in-independent
+      this.getClientProgressSummary(tenantId, clientId),
+
+      // Anthropometric SSoT ledger (Repairs the Progress charts)
+      prisma.clientAnthropometricRecord.findMany({
+        where: { tenantId, clientId, deletedAt: null },
+        orderBy: { measuredAt: 'asc' },
+        select: {
+          measuredAt: true,
+          weightKg: true,
+          bmi: true,
+          waistCm: true,
+          chestCm: true,
+          armCm: true,
+          thighCm: true,
+          hipCm: true,
+        },
+      }),
+
+      // Assessment T=0 baseline for lifestyle polymorphic union
+      prisma.assessment.findMany({
+        where: { tenantId, clientId, deletedAt: null },
+        orderBy: { assessmentDate: 'asc' },
+        select: { assessmentDate: true, sleepHours: true, waterIntakeLiters: true },
+      }),
+
+      // Check-in lifestyle self-reports (SUBMITTED + REVIEWED only)
+      prisma.clientCheckIn.findMany({
+        where: {
+          tenantId,
+          clientId,
+          status: { in: ['SUBMITTED', 'REVIEWED'] },
+          deletedAt: null,
+        },
+        orderBy: { checkInDate: 'asc' },
+        select: { checkInDate: true, sleepHours: true, waterIntakeLiters: true },
+      }),
+    ]);
+
+    // 2. Polymorphic lifestyle timeline — Assessment T=0 ∪ check-in self-reports
+    const lifestyleTimeline = buildLifestyleTimeline(assessments, checkIns);
+
+    // 3. Return resilient payload — all fields default to [] / null, never error
+    return {
+      summary,
+      chartData: {
+        anthropometrics: anthropometricRecords,
+        lifestyle: lifestyleTimeline,
+      },
+      checkInCount: checkIns.length,
     };
   },
 };
