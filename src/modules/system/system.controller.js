@@ -33,6 +33,20 @@ export const systemController = {
         ClientStatus,
         OnboardingStatus,
         CheckInStatus,
+        DOCUMENT_CATEGORY: {
+          BLOODWORK: 'BLOODWORK',
+          CONSENT_FORM: 'CONSENT_FORM',
+          DIET_HISTORY: 'DIET_HISTORY',
+          LIFESTYLE_FITNESS: 'LIFESTYLE_FITNESS',
+          GENERAL: 'GENERAL',
+        },
+        VaultDocumentCategory: {
+          BLOODWORK: 'BLOODWORK',
+          CONSENT_FORM: 'CONSENT_FORM',
+          DIET_HISTORY: 'DIET_HISTORY',
+          LIFESTYLE_FITNESS: 'LIFESTYLE_FITNESS',
+          GENERAL: 'GENERAL',
+        },
         ActivityLevel: {
           SEDENTARY: 'SEDENTARY',
           LIGHTLY_ACTIVE: 'LIGHTLY_ACTIVE',

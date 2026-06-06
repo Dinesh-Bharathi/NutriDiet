@@ -184,6 +184,7 @@ model Tenant {
   clientRiskFlags             ClientRiskFlag[]
   assessmentSnapshots         AssessmentSnapshot[]
   fileAssets                  FileAsset[]
+  vaultDocuments              VaultDocument[]
 
   @@index([slug])
   @@index([status])
@@ -253,10 +254,10 @@ model Client {
   dietitianId String? // Assigned practitioner (User with DIETITIAN role)
 
   // Identity
-  firstName   String
-  lastName    String
-  email       String?
-  phone       String?
+  firstName     String
+  lastName      String
+  email         String?
+  phone         String?
   gender        Gender?
   dateOfBirth   DateTime?
   avatarAssetId String?
@@ -292,6 +293,7 @@ model Client {
   labResults                ClientLabResult[]
   riskFlags                 ClientRiskFlag[]
   assessmentSnapshots       AssessmentSnapshot[]
+  vaultDocuments            VaultDocument[]
 
   @@index([tenantId])
   @@index([tenantId, dietitianId])
@@ -1417,13 +1419,34 @@ model FileAsset {
   updatedAt       DateTime        @updatedAt
   deletedAt       DateTime?
 
-  tenant          Tenant   @relation(fields: [tenantId], references: [id])
-  user            User     @relation("FileUploader", fields: [uploadedBy], references: [id])
-  clientsAsAvatar Client[] @relation("ClientAvatar")
+  tenant          Tenant         @relation(fields: [tenantId], references: [id])
+  user            User           @relation("FileUploader", fields: [uploadedBy], references: [id])
+  clientsAsAvatar Client[]       @relation("ClientAvatar")
+  vaultDocument   VaultDocument?
 
   @@index([tenantId])
   @@index([tenantId, entityType, entityId])
   @@index([status])
   @@index([visibility])
   @@map("file_assets")
+}
+
+model VaultDocument {
+  id          String  @id @default(cuid())
+  tenantId    String
+  clientId    String
+  assetId     String  @unique
+  category    String // Enums: BLOODWORK, CONSENT_FORM, DIET_HISTORY, LIFESTYLE_FITNESS, GENERAL
+  description String? @db.VarChar(500)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  tenant Tenant    @relation(fields: [tenantId], references: [id])
+  client Client    @relation(fields: [clientId], references: [id])
+  asset  FileAsset @relation(fields: [assetId], references: [id])
+
+  @@index([tenantId, clientId, deletedAt])
+  @@map("vault_documents")
 }

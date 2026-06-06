@@ -15,6 +15,7 @@ import { resolveTenant } from '../../middlewares/tenant.middleware.js';
 import { requireMinRole } from '../../middlewares/rbac.middleware.js';
 import { ROLES } from '../../config/constants.js';
 import asyncHandler from '../../utils/asyncHandler.js';
+import vaultRoutes from '../vault/vault.routes.js';
 
 const router = Router();
 
@@ -175,5 +176,8 @@ router.get(
   '/:clientId/progress-dashboard',
   asyncHandler(progressController.getFullProgressDashboard)
 );
+
+// Client Vault Sub-Router
+router.use('/:clientId/vault', vaultRoutes);
 
 export default router;
