@@ -733,6 +733,8 @@ model ClientLabResult {
   source                 String?
   notes                  String?
   metadata               Json?
+  vaultDocumentId        String?
+  documentPageReference  String?
   createdAt              DateTime           @default(now())
   updatedAt              DateTime           @updatedAt
   deletedAt              DateTime?
@@ -742,6 +744,7 @@ model ClientLabResult {
   profile          ClientClinicalProfile @relation(fields: [profileId], references: [id])
   assessment       Assessment?           @relation(fields: [assessmentId], references: [id], onDelete: SetNull)
   markerDefinition LabMarkerDefinition?  @relation(fields: [markerDefinitionId], references: [id], onDelete: SetNull)
+  vaultDocument    VaultDocument?        @relation(fields: [vaultDocumentId], references: [id], onDelete: SetNull)
 
   @@index([tenantId, clientId])
   @@index([profileId])
@@ -750,6 +753,7 @@ model ClientLabResult {
   @@index([markerKey])
   @@index([resultDate])
   @@index([isAbnormal])
+  @@index([vaultDocumentId])
   @@map("client_lab_results")
 }
 
@@ -1005,10 +1009,10 @@ model DietPlanTemplate {
   deletedAt DateTime?
 
   // Relations
-  tenant  Tenant                 @relation(fields: [tenantId], references: [id])
-  creator User                   @relation(fields: [createdBy], references: [id])
-  meals   DietPlanTemplateMeal[]
-  cycles  TemplateCycle[]
+  tenant   Tenant                 @relation(fields: [tenantId], references: [id])
+  creator  User                   @relation(fields: [createdBy], references: [id])
+  meals    DietPlanTemplateMeal[]
+  cycles   TemplateCycle[]
 
   @@index([tenantId])
   @@map("diet_plan_templates")
@@ -1419,7 +1423,7 @@ model FileAsset {
   updatedAt       DateTime        @updatedAt
   deletedAt       DateTime?
 
-  tenant          Tenant         @relation(fields: [tenantId], references: [id])
+  tenant   Tenant         @relation(fields: [tenantId], references: [id])
   user            User           @relation("FileUploader", fields: [uploadedBy], references: [id])
   clientsAsAvatar Client[]       @relation("ClientAvatar")
   vaultDocument   VaultDocument?
@@ -1443,10 +1447,13 @@ model VaultDocument {
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  tenant Tenant    @relation(fields: [tenantId], references: [id])
-  client Client    @relation(fields: [clientId], references: [id])
-  asset  FileAsset @relation(fields: [assetId], references: [id])
+  tenant     Tenant            @relation(fields: [tenantId], references: [id])
+  client     Client            @relation(fields: [clientId], references: [id])
+  asset      FileAsset         @relation(fields: [assetId], references: [id])
+  labResults ClientLabResult[]
 
   @@index([tenantId, clientId, deletedAt])
   @@map("vault_documents")
 }
+
+

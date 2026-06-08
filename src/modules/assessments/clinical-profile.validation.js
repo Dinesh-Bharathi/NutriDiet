@@ -159,6 +159,8 @@ export const createLabResultSchema = z.object({
     source: z.string().max(255).nullable().optional(),
     notes: z.string().max(2000).nullable().optional(),
     metadata: z.record(z.any()).nullable().optional(),
+    vaultDocumentId: z.string().cuid().nullable().optional(),
+    documentPageReference: z.string().max(255).nullable().optional(),
   }),
 });
 

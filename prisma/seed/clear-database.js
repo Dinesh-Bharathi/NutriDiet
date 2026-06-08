@@ -43,6 +43,9 @@ export async function clearDatabase() {
   await prisma.templateCycleDay.deleteMany();
   await prisma.templateCycle.deleteMany();
 
+  // ── Tier 5.5: Vault Documents ────────────────────────────────────────────
+  await prisma.vaultDocument.deleteMany();
+
   // ── Tier 6: Core business aggregates ─────────────────────────────────────
   await prisma.clientCheckIn.deleteMany();
   await prisma.dietPlan.deleteMany();

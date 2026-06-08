@@ -8,6 +8,14 @@ const createVaultSchema = z.object({
   description: z.string().max(500).optional().nullable(),
 });
 
+const listVaultQuerySchema = z.object({
+  search: z.string().optional(),
+  category: z.string().optional(),
+  type: z.string().optional(),
+  page: z.string().regex(/^\d+$/).transform(Number).optional(),
+  limit: z.string().regex(/^\d+$/).transform(Number).optional(),
+});
+
 export const vaultController = {
   create: asyncHandler(async (req, res) => {
     const tenantId = req.user.tenantId; // Verified JWT extraction
@@ -26,11 +34,35 @@ export const vaultController = {
   list: asyncHandler(async (req, res) => {
     const tenantId = req.user.tenantId;
     const { clientId } = req.params;
-    const { search, category } = req.query;
+    const { search, category, type, page, limit } = listVaultQuerySchema.parse(req.query);
     
-    const results = await vaultService.getClientVault(clientId, tenantId, { search, category });
+    const results = await vaultService.getClientVault(clientId, tenantId, { 
+      search, 
+      category, 
+      type,
+      page,
+      limit
+    });
     
-    res.status(200).json({
+    if (page && limit) {
+      const { documents, total } = results;
+      const totalPages = Math.ceil(total / limit);
+      return res.status(200).json({
+        success: true,
+        message: 'Vault documents retrieved',
+        data: { 
+          vaultDocuments: documents,
+          pagination: {
+            total,
+            page,
+            limit,
+            totalPages
+          }
+        }
+      });
+    }
+    
+    return res.status(200).json({
       success: true,
       message: 'Vault documents retrieved',
       data: { vaultDocuments: results }

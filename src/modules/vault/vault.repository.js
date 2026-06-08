@@ -7,9 +7,8 @@ export const vaultRepository = {
       include: { asset: true }
     });
   },
-
   findByClientId: async (clientId, tenantId, filters = {}) => {
-    const { category, search } = filters;
+    const { category, search, type, page, limit } = filters;
     
     const whereClause = { 
       clientId, 
@@ -21,6 +20,33 @@ export const vaultRepository = {
       whereClause.category = category;
     }
 
+    if (type && type !== 'ALL') {
+      if (type === 'PDF') {
+        whereClause.asset = { mimeType: 'application/pdf' };
+      } else if (type === 'IMAGE') {
+        whereClause.asset = { mimeType: { startsWith: 'image/' } };
+      } else if (type === 'WORD') {
+        whereClause.asset = {
+          mimeType: {
+            in: [
+              'application/msword',
+              'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+            ]
+          }
+        };
+      } else if (type === 'EXCEL') {
+        whereClause.asset = {
+          mimeType: {
+            in: [
+              'application/vnd.ms-excel',
+              'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+              'text/csv'
+            ]
+          }
+        };
+      }
+    }
+
     if (search) {
       whereClause.OR = [
         { description: { contains: search, mode: 'insensitive' } },
@@ -29,11 +55,24 @@ export const vaultRepository = {
       ];
     }
 
-    return prisma.vaultDocument.findMany({
+    const queryOptions = {
       where: whereClause,
       include: { asset: true },
       orderBy: { createdAt: 'desc' }
-    });
+    };
+
+    if (page && limit) {
+      queryOptions.skip = (parseInt(page) - 1) * parseInt(limit);
+      queryOptions.take = parseInt(limit);
+
+      const [documents, total] = await Promise.all([
+        prisma.vaultDocument.findMany(queryOptions),
+        prisma.vaultDocument.count({ where: whereClause })
+      ]);
+      return { documents, total };
+    }
+
+    return prisma.vaultDocument.findMany(queryOptions);
   },
 
   findById: async (id, tenantId) => {

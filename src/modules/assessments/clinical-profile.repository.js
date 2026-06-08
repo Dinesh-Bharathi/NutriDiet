@@ -315,12 +315,22 @@ export const clinicalProfileRepository = {
         clientId: profile.clientId,
         profileId: profile.id,
       },
+      include: {
+        vaultDocument: {
+          include: { asset: true },
+        },
+      },
     });
   },
 
   async getLabResults(tenantId, profileId) {
     return prisma.clientLabResult.findMany({
       where: { tenantId, profileId, deletedAt: null },
+      include: {
+        vaultDocument: {
+          include: { asset: true },
+        },
+      },
       orderBy: [{ resultDate: 'desc' }, { createdAt: 'desc' }],
     });
   },

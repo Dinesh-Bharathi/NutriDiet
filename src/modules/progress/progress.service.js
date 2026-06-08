@@ -144,7 +144,7 @@ function calculateMeasurementTrends(anthropometrics) {
  */
 function buildLifestyleTimeline(assessments, checkIns) {
   const assessmentPoints = assessments
-    .filter((a) => a.sleepHours != null || a.waterIntakeLiters != null)
+    .filter((a) => (a.sleepHours !== null && a.sleepHours !== undefined) || (a.waterIntakeLiters !== null && a.waterIntakeLiters !== undefined))
     .map((a) => ({
       date: new Date(a.assessmentDate).toISOString().split('T')[0],
       sleepHours: a.sleepHours ?? null,
@@ -154,7 +154,7 @@ function buildLifestyleTimeline(assessments, checkIns) {
     }));
 
   const checkInPoints = checkIns
-    .filter((c) => c.sleepHours != null || c.waterIntakeLiters != null)
+    .filter((c) => (c.sleepHours !== null && c.sleepHours !== undefined) || (c.waterIntakeLiters !== null && c.waterIntakeLiters !== undefined))
     .map((c) => ({
       date: new Date(c.checkInDate).toISOString().split('T')[0],
       sleepHours: c.sleepHours ?? null,

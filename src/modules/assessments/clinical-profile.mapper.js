@@ -136,6 +136,12 @@ export function mapLabResult(result) {
     notes: result.notes,
     metadata: result.metadata,
     createdAt: mapDate(result.createdAt),
+    sourceDocument: result.vaultDocument ? {
+      vaultId: result.vaultDocument.id,
+      assetId: result.vaultDocument.asset.id,
+      filename: result.vaultDocument.asset.originalName || result.vaultDocument.asset.fileName,
+      pageReference: result.documentPageReference,
+    } : null,
   };
 }
 

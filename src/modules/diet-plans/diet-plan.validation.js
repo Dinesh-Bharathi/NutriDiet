@@ -56,7 +56,11 @@ export const createDietPlanSchema = z.object({
       .min(1, "Title cannot be empty")
       .max(200, "Title is too long"),
     description: z.string().max(1000).nullable().optional(),
-    assessmentId: z.string().nullable().optional(),
+    assessmentId: z
+      .preprocess(
+        (val) => (val === "" || val === null || val === undefined ? null : val),
+        z.string().nullable().optional()
+      ),
     dailyCalories: optionalInt(0, "Daily calories"),
     proteinGrams: optionalFloat(0, "Protein"),
     carbGrams: optionalFloat(0, "Carbohydrates"),
@@ -78,8 +82,11 @@ export const updateDietPlanSchema = z.object({
   body: z.object({
     title: z.string().min(1, "Title cannot be empty").max(200).optional(),
     description: z.string().max(1000).nullable().optional(),
-    goal: z.string().max(1000).nullable().optional(),
-    assessmentId: z.string().nullable().optional(),
+    assessmentId: z
+      .preprocess(
+        (val) => (val === "" || val === null || val === undefined ? null : val),
+        z.string().nullable().optional()
+      ),
     dailyCalories: optionalInt(0, "Daily calories"),
     proteinGrams: optionalFloat(0, "Protein"),
     carbGrams: optionalFloat(0, "Carbohydrates"),

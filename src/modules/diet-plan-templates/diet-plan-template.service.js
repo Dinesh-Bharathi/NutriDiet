@@ -366,6 +366,9 @@ export const dietPlanTemplateService = {
           },
         },
       });
+    }, {
+      maxWait: 15000,
+      timeout: 30000,
     });
   },
 
@@ -387,13 +390,11 @@ export const dietPlanTemplateService = {
       await checkActivePlanCollision(tenantId, clientId, null, details.startDate, details.endDate);
     }
 
-    // Wrap plan creation in transaction (Refinement #2)
-    return prisma.$transaction(async (tx) => {
+    const executeCloning = async (tx) => {
       const plan = await tx.dietPlan.create({
         data: {
           title: template.title,
           description: template.description,
-          goal: template.goal,
           dailyCalories: template.dailyCalories,
           proteinGrams: template.proteinGrams,
           carbGrams: template.carbGrams,
@@ -543,6 +544,15 @@ export const dietPlanTemplateService = {
           },
         },
       });
-    });
+    };
+
+    if (details.tx) {
+      return executeCloning(details.tx);
+    } else {
+      return prisma.$transaction(executeCloning, {
+        maxWait: 15000,
+        timeout: 30000,
+      });
+    }
   },
 };
