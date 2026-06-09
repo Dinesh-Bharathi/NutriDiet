@@ -236,10 +236,6 @@ export const assessmentService = {
           });
         }
       },
-      {
-        maxWait: 5000,
-        timeout: 20000,
-      },
     );
 
     // POST-COMMIT ASYNC ACTIONS

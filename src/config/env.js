@@ -71,10 +71,17 @@ const env = Object.freeze({
   RATE_LIMIT_WINDOW_MS: parse_int(require_env('RATE_LIMIT_WINDOW_MS', '900000'), 'RATE_LIMIT_WINDOW_MS'),
   RATE_LIMIT_MAX_REQUESTS: parse_int(require_env('RATE_LIMIT_MAX_REQUESTS', '100'), 'RATE_LIMIT_MAX_REQUESTS'),
 
-  // ── Security ─────────────────────────────────────────────────────────────
+  // Security ─────────────────────────────────────────────────────────────
   BCRYPT_ROUNDS: parse_int(require_env('BCRYPT_ROUNDS', '12'), 'BCRYPT_ROUNDS'),
 
-  // ── Derived helpers ───────────────────────────────────────────────────────
+  // Cloudflare R2 ────────────────────────────────────────────────────────
+  R2_ENDPOINT: require_env('R2_ENDPOINT', 'https://mock.r2.cloudflarestorage.com'),
+  R2_BUCKET_NAME: require_env('R2_BUCKET_NAME', 'nutri-diet-assets'),
+  R2_ACCESS_KEY_ID: require_env('R2_ACCESS_KEY_ID', 'mock_access_key_id'),
+  R2_SECRET_ACCESS_KEY: require_env('R2_SECRET_ACCESS_KEY', 'mock_secret_access_key'),
+  R2_PUBLIC_URL: require_env('R2_PUBLIC_URL', 'https://pub-mock.r2.dev'),
+
+  // Derived helpers ───────────────────────────────────────────────────────
   get IS_PRODUCTION() { return this.NODE_ENV === 'production'; },
   get IS_DEVELOPMENT() { return this.NODE_ENV === 'development'; },
   get IS_TEST() { return this.NODE_ENV === 'test'; },

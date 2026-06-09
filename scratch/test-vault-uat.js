@@ -3,12 +3,12 @@ import prisma from '../src/lib/prisma.js';
 import { vaultService } from '../src/modules/vault/vault.service.js';
 import { vaultRepository } from '../src/modules/vault/vault.repository.js';
 import { getAssetAccessUrl, deleteAsset } from '../src/modules/storage/storage.service.js';
-import cloudinaryService from '../src/lib/cloudinary.js';
+import storageProvider from '../src/lib/storage/index.js';
 import { ApiError } from '../src/utils/ApiError.js';
 
-// Mock Cloudinary delete to avoid real network calls during test
-cloudinaryService.deleteFile = async (publicId, resourceType, deliveryType) => {
-  console.log(`[MOCK CLOUDINARY] Wiping publicId: ${publicId}`);
+// Mock Storage delete to avoid real network calls during test
+storageProvider.delete = async (key) => {
+  console.log(`[MOCK STORAGE] Wiping key: ${key}`);
   return { result: 'ok' };
 };
 

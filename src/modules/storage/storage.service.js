@@ -1,7 +1,7 @@
 // src/modules/storage/storage.service.js
 import fs from "fs";
 import { ApiError } from "../../utils/ApiError.js";
-import cloudinaryService from "../../lib/cloudinary.js";
+import storageProvider from "../../lib/storage/index.js";
 import * as storageRepository from "./storage.repository.js";
 import { ALLOWED_MIME_TYPES, FILE_VISIBILITY, FILE_ENTITY_TYPE } from "./storage.constants.js";
 import prisma from "../../config/database.js";
@@ -88,13 +88,10 @@ export async function uploadAsset(tenantId, userId, file, entityType, entityId, 
       deliveryType = "authenticated";
     }
 
-    // 5. Upload to Cloudinary
-    const cloudinaryResult = await cloudinaryService.uploadFile(file.path, {
+    // 5. Upload to Cloudflare R2
+    const uploadResult = await storageProvider.upload(file, {
       folder,
-      resource_type: resourceType,
-      type: deliveryType,
-      use_filename: true,
-      unique_filename: true,
+      visibility,
     });
 
     // Clean up temp file
@@ -108,16 +105,16 @@ export async function uploadAsset(tenantId, userId, file, entityType, entityId, 
       entityType,
       entityId,
       folder,
-      publicId: cloudinaryResult.public_id,
-      assetId: cloudinaryResult.asset_id,
+      publicId: uploadResult.public_id,
+      assetId: uploadResult.asset_id,
       resourceType,
-      fileName: cloudinaryResult.original_filename,
+      fileName: uploadResult.original_filename,
       originalName: file.originalname,
       mimeType: file.mimetype,
       extension: extension.toLowerCase(),
-      fileSize: cloudinaryResult.bytes,
-      url: cloudinaryResult.url,
-      secureUrl: cloudinaryResult.secure_url,
+      fileSize: uploadResult.bytes,
+      url: uploadResult.url,
+      secureUrl: uploadResult.secure_url,
       uploadedBy: userId,
       visibility,
       status: "ACTIVE",
@@ -163,7 +160,7 @@ export async function getAssetAccessUrl(assetId, tenantId, userId, action = "VIE
 
   if (asset.visibility === FILE_VISIBILITY.PROTECTED || asset.visibility === FILE_VISIBILITY.PRIVATE) {
     // Generate signed URL
-    accessUrl = await cloudinaryService.generateSignedUrl(asset.publicId, asset.resourceType);
+    accessUrl = await storageProvider.getPublicUrl(asset.publicId, { signed: true });
   }
 
   // Generate audit trail
@@ -185,13 +182,8 @@ export async function deleteAsset(assetId, tenantId, userId) {
   const asset = await storageRepository.getFileAssetById(assetId, tenantId);
   if (!asset) throw new ApiError("Asset not found", 404);
 
-  // 1. Delete from Cloudinary
-  let deliveryType = "upload";
-  if (asset.visibility === FILE_VISIBILITY.PROTECTED || asset.visibility === FILE_VISIBILITY.PRIVATE) {
-    deliveryType = "authenticated";
-  }
-  
-  await cloudinaryService.deleteFile(asset.publicId, asset.resourceType, deliveryType);
+  // 1. Delete from Cloudflare R2
+  await storageProvider.delete(asset.publicId);
 
   // 2. Soft delete from database
   await storageRepository.softDeleteFileAsset(assetId, tenantId);

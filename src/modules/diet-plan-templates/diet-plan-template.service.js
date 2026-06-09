@@ -366,9 +366,6 @@ export const dietPlanTemplateService = {
           },
         },
       });
-    }, {
-      maxWait: 15000,
-      timeout: 30000,
     });
   },
 
@@ -549,10 +546,7 @@ export const dietPlanTemplateService = {
     if (details.tx) {
       return executeCloning(details.tx);
     } else {
-      return prisma.$transaction(executeCloning, {
-        maxWait: 15000,
-        timeout: 30000,
-      });
+      return prisma.$transaction(executeCloning);
     }
   },
 };
