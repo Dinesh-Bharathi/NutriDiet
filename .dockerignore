@@ -1,0 +1,32 @@
+# Dependency directory
+node_modules/
+
+# Local env files
+.env
+.env.*
+!.env.example
+
+# Logs
+logs/
+*.log
+
+# Git
+.git
+.gitignore
+
+# Testing
+coverage/
+.nyc_output/
+
+# IDE / Editors
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Build output
+dist/
+build/

@@ -12,12 +12,13 @@ import app from "./app.js";
 import env from "./config/env.js";
 import logger from "./utils/logger.js";
 import { disconnectDatabase } from "./config/database.js";
-import { disconnectRedis } from "./lib/redis.js";
+import { disconnectRedis, connectRedis } from "./lib/redis.js";
 
 let server;
 
 async function startServer() {
   try {
+    await connectRedis();
     server = app.listen(env.PORT, () => {
       logger.info(`🚀 Nutri-Diet API server started`, {
         port: env.PORT,

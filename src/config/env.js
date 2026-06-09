@@ -55,6 +55,10 @@ const env = Object.freeze({
   JWT_REFRESH_EXPIRES_IN: require_env('JWT_REFRESH_EXPIRES_IN', '7d'),
 
   // ── Redis ─────────────────────────────────────────────────────────────────
+  REDIS_HOST: require_env('REDIS_HOST', 'localhost'),
+  REDIS_PORT: parse_int(require_env('REDIS_PORT', '6379'), 'REDIS_PORT'),
+  REDIS_PASSWORD: process.env.REDIS_PASSWORD || '',
+  REDIS_DB: parse_int(require_env('REDIS_DB', '0'), 'REDIS_DB'),
   REDIS_URL: process.env.REDIS_URL || null,
 
   // ── CORS ─────────────────────────────────────────────────────────────────
