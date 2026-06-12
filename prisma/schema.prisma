@@ -29,7 +29,6 @@ enum Role {
   ADMIN
   DIETITIAN
   ASSISTANT
-  CLIENT
 }
 
 enum TenantPlan {

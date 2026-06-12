@@ -26,7 +26,7 @@ router.use(resolveTenant);
  */
 router.get(
   '/meals/:mealId/items/:itemId/swaps',
-  requireMinRole(ROLES.CLIENT),
+  requireMinRole(ROLES.ASSISTANT),
   validate(getSwapCandidatesSchema),
   asyncHandler(mealSwapController.getSwapCandidates)
 );

@@ -1,0 +1,9 @@
+-- AlterEnum
+BEGIN;
+CREATE TYPE "Role_new" AS ENUM ('OWNER', 'ADMIN', 'DIETITIAN', 'ASSISTANT');
+ALTER TABLE "users" ALTER COLUMN "role" DROP DEFAULT;
+ALTER TABLE "users" ALTER COLUMN "role" TYPE "Role_new" USING ("role"::text::"Role_new");
+ALTER TABLE "users" ALTER COLUMN "role" SET DEFAULT 'DIETITIAN';
+DROP TYPE "Role";
+ALTER TYPE "Role_new" RENAME TO "Role";
+COMMIT;

@@ -18,7 +18,6 @@ export const ROLES = Object.freeze({
   ADMIN: 'ADMIN',
   DIETITIAN: 'DIETITIAN',
   ASSISTANT: 'ASSISTANT',
-  CLIENT: 'CLIENT',
 });
 
 /**
@@ -26,7 +25,6 @@ export const ROLES = Object.freeze({
  * Used by RBAC middleware to implement "at least" permission checks.
  */
 export const ROLE_HIERARCHY = Object.freeze([
-  ROLES.CLIENT,
   ROLES.ASSISTANT,
   ROLES.DIETITIAN,
   ROLES.ADMIN,

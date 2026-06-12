@@ -17,7 +17,7 @@ router.use(resolveTenant);
 // Accessible by any logged-in user (including clients)
 router.get(
   "/localization-options",
-  requireMinRole(ROLES.CLIENT),
+  requireMinRole(ROLES.ASSISTANT),
   asyncHandler(settingsController.getLocalizationOptions),
 );
 

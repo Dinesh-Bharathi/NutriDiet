@@ -10,6 +10,8 @@ import {
   ClientStatus,
   OnboardingStatus,
   CheckInStatus,
+  Role,
+  UserStatus,
 } from '@prisma/client';
 
 export const systemController = {
@@ -33,6 +35,8 @@ export const systemController = {
         ClientStatus,
         OnboardingStatus,
         CheckInStatus,
+        Role,
+        UserStatus,
         DOCUMENT_CATEGORY: {
           BLOODWORK: 'BLOODWORK',
           CONSENT_FORM: 'CONSENT_FORM',
