@@ -37,4 +37,20 @@ router.patch(
   asyncHandler(settingsController.updateTenantSettings),
 );
 
+// GET /api/v1/settings/pdf-template
+// Accessible by practitioners / assistants
+router.get(
+  "/pdf-template",
+  requireMinRole(ROLES.ASSISTANT),
+  asyncHandler(settingsController.getPdfTemplateConfig),
+);
+
+// PUT /api/v1/settings/pdf-template
+// Requires admin level or above to change corporate configurations
+router.put(
+  "/pdf-template",
+  requireMinRole(ROLES.ADMIN),
+  asyncHandler(settingsController.updatePdfTemplateConfig),
+);
+
 export default router;

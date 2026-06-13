@@ -151,6 +151,7 @@ model Tenant {
   locale            String            @default("en-US")
   currencyCode      String            @default("USD")
   measurementSystem MeasurementSystem @default(METRIC)
+  pdfTemplateConfig Json?
 
   // Timestamps
   createdAt DateTime  @default(now())

@@ -125,4 +125,52 @@ export const settingsService = {
       },
     });
   },
+
+  /**
+   * Fetches PDF template settings for a specific tenant.
+   *
+   * @param {string} tenantId
+   */
+  async getPdfTemplateConfig(tenantId) {
+    const tenant = await prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: {
+        pdfTemplateConfig: true,
+      },
+    });
+
+    if (!tenant) {
+      throw ApiError.notFound('Tenant');
+    }
+
+    return tenant.pdfTemplateConfig;
+  },
+
+  /**
+   * Updates PDF template settings for a specific tenant.
+   *
+   * @param {string} tenantId
+   * @param {object} data
+   */
+  async updatePdfTemplateConfig(tenantId, data) {
+    const tenant = await prisma.tenant.findUnique({
+      where: { id: tenantId },
+    });
+
+    if (!tenant) {
+      throw ApiError.notFound('Tenant');
+    }
+
+    const updatedTenant = await prisma.tenant.update({
+      where: { id: tenantId },
+      data: {
+        pdfTemplateConfig: data,
+      },
+      select: {
+        pdfTemplateConfig: true,
+      },
+    });
+
+    return updatedTenant.pdfTemplateConfig;
+  },
 };
