@@ -13,6 +13,7 @@ import env from "./config/env.js";
 import logger from "./utils/logger.js";
 import { disconnectDatabase } from "./config/database.js";
 import { disconnectRedis, connectRedis } from "./lib/redis.js";
+import { browserManager } from "./modules/pdf/puppeteer/browser-manager.js";
 
 let server;
 
@@ -57,6 +58,7 @@ async function gracefulShutdown(signal) {
       try {
         await disconnectDatabase();
         await disconnectRedis();
+        await browserManager.shutdown();
         logger.info("Graceful shutdown complete");
         process.exit(0);
       } catch (err) {

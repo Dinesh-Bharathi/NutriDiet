@@ -15,4 +15,11 @@ export const pdfTemplateSchema = z.object({
   footerPlacement: z.enum(['EVERY_PAGE', 'LAST_PAGE_ONLY'], {
     errorMap: () => ({ message: 'Footer placement must be EVERY_PAGE or LAST_PAGE_ONLY' }),
   }),
+  logoWidth: z.number().int().positive().nullable().optional(),
+  logoHeight: z.number().int().positive().nullable().optional(),
+  logoPreserveAspectRatio: z.boolean().nullable().optional(),
+  watermarkAssetId: z.string().nullable().optional(),
+  watermarkUrl: z.string().url('Invalid watermark URL').nullable().optional().or(z.literal('')),
+  watermarkOpacity: z.number().int().min(0).max(100).nullable().optional(),
+  watermarkEnabled: z.boolean().nullable().optional(),
 });
