@@ -42,4 +42,61 @@ export const tenantSettingsSchema = z.object({
   measurementSystem: z.enum(['METRIC', 'IMPERIAL'], {
     errorMap: () => ({ message: 'Measurement system must be METRIC or IMPERIAL' }),
   }),
+
+  practiceEmail: z
+    .string()
+    .email('Invalid email format')
+    .nullable()
+    .or(z.literal(''))
+    .transform((val) => (val === '' ? null : val))
+    .optional(),
+
+  practicePhone: z
+    .string()
+    .nullable()
+    .or(z.literal(''))
+    .transform((val) => (val === '' ? null : val))
+    .optional(),
+
+  addressLine1: z
+    .string()
+    .nullable()
+    .or(z.literal(''))
+    .transform((val) => (val === '' ? null : val))
+    .optional(),
+
+  addressLine2: z
+    .string()
+    .nullable()
+    .or(z.literal(''))
+    .transform((val) => (val === '' ? null : val))
+    .optional(),
+
+  city: z
+    .string()
+    .nullable()
+    .or(z.literal(''))
+    .transform((val) => (val === '' ? null : val))
+    .optional(),
+
+  state: z
+    .string()
+    .nullable()
+    .or(z.literal(''))
+    .transform((val) => (val === '' ? null : val))
+    .optional(),
+
+  country: z
+    .string()
+    .nullable()
+    .or(z.literal(''))
+    .transform((val) => (val === '' ? null : val))
+    .optional(),
+
+  postalCode: z
+    .string()
+    .nullable()
+    .or(z.literal(''))
+    .transform((val) => (val === '' ? null : val))
+    .optional(),
 });

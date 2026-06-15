@@ -9,6 +9,9 @@ import {
 } from "./compiler/template-compiler.js";
 import { pdfRenderer } from "./puppeteer/pdf-renderer.js";
 import { getSampleDocumentPages } from "./templates/sample-document.js";
+import { dietPlanDocumentBuilder } from "./diet-plan-document.builder.js";
+import { getSummaryPages } from "./templates/summary-template.js";
+import { getDetailedPages } from "./templates/detailed-template.js";
 import { JSDOM } from "jsdom";
 import logger from "../../utils/logger.js";
 
@@ -30,6 +33,16 @@ export const pdfService = {
         phone: true,
         address: true,
         pdfTemplateConfig: true,
+        locale: true,
+        timezone: true,
+        practiceEmail: true,
+        practicePhone: true,
+        addressLine1: true,
+        addressLine2: true,
+        city: true,
+        state: true,
+        country: true,
+        postalCode: true,
       },
     });
 
@@ -80,6 +93,38 @@ export const pdfService = {
       }
     }
 
+    const tenantLocale = tenant.locale || "en-US";
+    const tenantTimezone = tenant.timezone || "UTC";
+
+    const addressParts = [
+      tenant.addressLine1,
+      tenant.addressLine2,
+      tenant.city,
+      tenant.state,
+      tenant.country,
+      tenant.postalCode
+    ].filter(Boolean);
+    const clinicAddress = addressParts.length > 0 ? addressParts.join(", ") : (tenant.address || "");
+    const clinicEmail = tenant.practiceEmail || tenant.email || "";
+    const clinicPhone = tenant.practicePhone || tenant.phone || "";
+
+    const now = new Date();
+    const documentDate = new Intl.DateTimeFormat(tenantLocale, {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+      timeZone: tenantTimezone,
+    }).format(now);
+
+    const generatedAt = new Intl.DateTimeFormat(tenantLocale, {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      timeZone: tenantTimezone,
+    }).format(now);
+
     // 4. Construct Placeholder Context
     const compileContext = {
       // Branding colors & sizing
@@ -94,20 +139,25 @@ export const pdfService = {
       logoPreserveAspectRatio: config.logoPreserveAspectRatio ?? true,
 
       watermarkUrl: watermarkBase64,
-      watermarkOpacity: config.watermarkOpacity ?? 25,
+      watermarkOpacity: config.watermarkOpacity ?? 8,
       watermarkEnabled: config.watermarkEnabled ?? false,
 
       // Clinic placeholders
-      clinic_name: tenant.name || "Aura Wellness Clinic",
-      clinic_email: tenant.email || "contact@aurawellness.com",
-      clinic_phone: tenant.phone || "+1 (555) 019-2834",
-      clinic_address: tenant.address || "742 Evergreen Terrace, Springfield",
+      clinic_name: tenant.name || "",
+      clinic_email: clinicEmail,
+      clinic_phone: clinicPhone,
+      clinic_address: clinicAddress,
 
       // Patient placeholders (sample data)
       patient_name: "Jane Doe",
       patient_email: "jane.doe@example.com",
       patient_phone: "+1 (555) 014-9988",
-      patient_dob: "October 12, 1990",
+      patient_dob: new Intl.DateTimeFormat(tenantLocale, {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+        timeZone: tenantTimezone,
+      }).format(new Date("1990-10-12")),
       patient_gender: "Female",
       patient_age: "32",
       patient_height: "175 cm",
@@ -115,20 +165,10 @@ export const pdfService = {
       patient_goal: "Fat Loss",
 
       // Document placeholders
-      document_date: new Date().toLocaleDateString("en-US", {
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-      }),
+      document_date: documentDate,
       author_name: "Dr. Sarah Jenkins, RD",
       document_title: "SAMPLE CLINIC DOCUMENT",
-      generated_at: new Date().toLocaleString("en-US", {
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-      }),
+      generated_at: generatedAt,
     };
 
     // 5. Compile Headers & Footers
@@ -150,6 +190,60 @@ export const pdfService = {
     });
 
     // 8. Generate PDF Buffer via Puppeteer
+    const pdfBuffer = await pdfRenderer.renderHtmlToPdf(finalHtml);
+    return pdfBuffer;
+  },
+
+  /**
+   * Generates a PDF document for a specific client Diet Plan.
+   * Compiles the plan using options (SUMMARY vs DETAILED layout formatting)
+   * and the organization's PDF configuration layout settings.
+   *
+   * @param {string} tenantId - Tenant identifier
+   * @param {string} dietPlanId - Target diet plan ID
+   * @param {object} options - Generation options (format, section inclusions)
+   * @returns {Promise<Buffer>} Generated PDF buffer
+   */
+  async generateDietPlanPdf(tenantId, dietPlanId, options = {}) {
+    // 1. Build Compilation Context (includes fetching assets, colors, and client details)
+    const compileContext = await dietPlanDocumentBuilder.buildContext(tenantId, dietPlanId, options);
+
+    // 2. Load PDF Template Config from Tenant
+    const tenant = await prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { pdfTemplateConfig: true },
+    });
+    if (!tenant || !tenant.pdfTemplateConfig) {
+      throw new PdfError(400, "PDF_TEMPLATE_INVALID", "Tenant template config is missing");
+    }
+    const config = tenant.pdfTemplateConfig;
+
+    // 3. Compile layout headers and footers
+    const compiledHeader = compileContent(config.headerContent, compileContext);
+    const compiledFooter = compileContent(config.footerContent, compileContext);
+
+    // 4. Resolve template layouts based on mode
+    let rawPages = [];
+    if (compileContext.exportMode === "SUMMARY") {
+      rawPages = getSummaryPages(compileContext);
+    } else {
+      rawPages = getDetailedPages(compileContext);
+    }
+
+    // Compile each body page HTML
+    const compiledPages = rawPages.map((pageHtml) =>
+      compileContent({ mode: "source", content: pageHtml }, compileContext)
+    );
+
+    // 5. Assemble printable HTML document shell
+    const finalHtml = compileHtmlDocument({
+      compiledHeader,
+      compiledFooter,
+      bodyPagesHtml: compiledPages,
+      context: compileContext,
+    });
+
+    // 6. Generate PDF Buffer via Puppeteer
     const pdfBuffer = await pdfRenderer.renderHtmlToPdf(finalHtml);
     return pdfBuffer;
   },

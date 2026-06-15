@@ -155,7 +155,7 @@ export const defaultPlaceholders = [
     label: "Document Title",
     category: "document",
     description: "The title of the generated document",
-    sampleValue: "Personalized Diet & Nutrition Plan",
+    sampleValue: "Diet & Nutrition Plan",
   },
   {
     key: "{{page}}",
@@ -178,19 +178,29 @@ export const defaultPlaceholders = [
     description: "The date and time the PDF was generated",
     sampleValue: "June 13, 2026, 07:51 PM",
   },
+  {
+    key: "{{signature_block}}",
+    label: "Signature Block",
+    category: "document",
+    description:
+      "Renders the practitioner's prepared by, signature line, and date block",
+    sampleValue: "[Signature Block]",
+  },
   // Assets Info
   {
     key: "{{clinic_logo}}",
     label: "Clinic Logo",
     category: "assets",
-    description: "Renders the currently uploaded clinic branding logo in the document flow",
+    description:
+      "Renders the currently uploaded clinic branding logo in the document flow",
     sampleValue: "[Clinic Logo Image]",
   },
   {
     key: "{{watermark}}",
     label: "Watermark",
     category: "assets",
-    description: "Renders the currently configured watermark image behind all text content",
+    description:
+      "Renders the currently configured watermark image behind all text content",
     sampleValue: "[Watermark]",
   },
 ];

@@ -63,6 +63,12 @@ const ALLOWED_STYLE_PROPERTIES = new Set([
   "overflow",
   "object-fit",
   "vertical-align",
+  "page-break-inside",
+  "break-inside",
+  "page-break-after",
+  "break-after",
+  "page-break-before",
+  "break-before",
 ]);
 
 /**
@@ -354,20 +360,14 @@ export function compileHtmlDocument({
             showFooter
               ? `
             <div class="footer-region">
-              <div class="footer-text pdf-preview-richtext">
+              <div class="footer-text pdf-preview-richtext" style="width: 100%;">
                 ${pageFooter || '<p style="color: #cbd5e1; font-style: italic;">[Footer Content]</p>'}
-              </div>
-              <div class="page-number">
-                Page ${pageNum} of ${totalPages}
               </div>
             </div>
             `
               : `
-            <div class="footer-region" style="border-top-color: transparent;">
+            <div class="footer-region">
               <div class="footer-text"></div>
-              <div class="page-number">
-                Page ${pageNum} of ${totalPages}
-              </div>
             </div>
             `
           }
@@ -401,10 +401,13 @@ export function compileHtmlDocument({
         .page {
           background-color: #ffffff;
           width: 210mm;
-          height: 297mm;
+          /* min-height allows content to push beyond one A4 sheet; Puppeteer
+             will break to a new print page automatically. Fixed height was
+             clipping all content beyond the first viewport. */
+          min-height: 297mm;
           padding: 20mm;
           position: relative;
-          overflow: hidden;
+          overflow: visible;
           display: flex;
           flex-direction: column;
           margin: 10px auto;
@@ -424,7 +427,7 @@ export function compileHtmlDocument({
             border: none;
             box-shadow: none;
             width: 210mm;
-            height: 297mm;
+            min-height: 297mm;
             page-break-after: always;
             break-after: page;
           }
@@ -461,17 +464,17 @@ export function compileHtmlDocument({
         
         .body-region {
           flex: 1;
-          min-height: 0;
+          /* overflow: visible is critical — hidden would silently clip any
+             guidance section content that extends past the header/footer space. */
+          overflow: visible;
           margin-top: 16px;
           z-index: 10;
           font-size: 11px;
           line-height: 1.6;
           color: #1e293b;
-          overflow: hidden;
         }
 
         .footer-region {
-          border-top: 1px solid ${primaryColor}20;
           padding-top: 16px;
           margin-top: 24px;
           display: flex;
@@ -487,13 +490,6 @@ export function compileHtmlDocument({
           flex: 1;
           min-width: 0;
           padding-right: 24px;
-        }
-
-        .page-number {
-          white-space: nowrap;
-          text-align: right;
-          font-weight: 500;
-          color: #64748b;
         }
 
         /* RichText & Preview Styles */
@@ -569,7 +565,77 @@ export function compileHtmlDocument({
           font-size: 10px;
         }
         .pdf-preview-body-content tr:nth-child(even) td {
-          background-color: ${secondaryColor};
+          background-color: #ffffff;
+        }
+
+        /* Rich-text content rendering — ensures TipTap HTML output renders
+           correctly in PDF: paragraphs, headings, lists, inline marks, links */
+        .rich-text-content p {
+          margin: 0 0 6px 0;
+          line-height: 1.5;
+        }
+        .rich-text-content p:last-child {
+          margin-bottom: 0;
+        }
+        .rich-text-content h1 {
+          font-size: 14px;
+          font-weight: 700;
+          margin: 10px 0 6px 0;
+        }
+        .rich-text-content h2 {
+          font-size: 12px;
+          font-weight: 700;
+          margin: 8px 0 4px 0;
+        }
+        .rich-text-content h3 {
+          font-size: 11px;
+          font-weight: 600;
+          margin: 6px 0 4px 0;
+        }
+        .rich-text-content h4 {
+          font-size: 10px;
+          font-weight: 600;
+          margin: 4px 0 2px 0;
+        }
+        .rich-text-content strong {
+          font-weight: 700;
+        }
+        .rich-text-content em {
+          font-style: italic;
+        }
+        .rich-text-content u {
+          text-decoration: underline;
+        }
+        .rich-text-content ul {
+          margin: 4px 0 6px 16px;
+          padding: 0;
+          list-style-type: disc;
+        }
+        .rich-text-content ol {
+          margin: 4px 0 6px 16px;
+          padding: 0;
+          list-style-type: decimal;
+        }
+        .rich-text-content li {
+          margin-bottom: 3px;
+          line-height: 1.5;
+        }
+        .rich-text-content a {
+          color: inherit;
+          text-decoration: underline;
+        }
+        .rich-text-content blockquote {
+          border-left: 3px solid #cbd5e1;
+          margin: 6px 0;
+          padding-left: 10px;
+          color: #64748b;
+          font-style: italic;
+        }
+
+        /* Prevent a guidance section from being split mid-element */
+        .guidance-section {
+          break-inside: avoid;
+          page-break-inside: avoid;
         }
       </style>
     </head>

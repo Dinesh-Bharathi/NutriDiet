@@ -72,6 +72,12 @@ export const createDietPlanSchema = z.object({
       .preprocess((val) => (val ? new Date(val) : null), z.date().nullable())
       .optional(),
     status: dietPlanStatusEnum.default(DIET_PLAN_STATUS.DRAFT),
+    instructions: z.string().max(10000).nullable().optional(),
+    recommendations: z.string().max(10000).nullable().optional(),
+    lifestyleAdvice: z.string().max(10000).nullable().optional(),
+    hydration: z.string().max(10000).nullable().optional(),
+    supplementNotes: z.string().max(10000).nullable().optional(),
+    mealPrepNotes: z.string().max(10000).nullable().optional(),
   }),
 });
 
@@ -98,6 +104,12 @@ export const updateDietPlanSchema = z.object({
       .preprocess((val) => (val ? new Date(val) : null), z.date().nullable())
       .optional(),
     status: dietPlanStatusEnum.optional(),
+    instructions: z.string().max(10000).nullable().optional(),
+    recommendations: z.string().max(10000).nullable().optional(),
+    lifestyleAdvice: z.string().max(10000).nullable().optional(),
+    hydration: z.string().max(10000).nullable().optional(),
+    supplementNotes: z.string().max(10000).nullable().optional(),
+    mealPrepNotes: z.string().max(10000).nullable().optional(),
   }),
 });
 

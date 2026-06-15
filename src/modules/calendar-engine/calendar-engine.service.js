@@ -221,6 +221,7 @@ export const calendarEngineService = {
       preview.push({
         date: formattedDate,
         dayLabel: res.cycleDay ? res.cycleDay.dayLabel : 'Static Day',
+        description: res.cycleDay ? (res.cycleDay.description || '') : '',
       });
     }
 

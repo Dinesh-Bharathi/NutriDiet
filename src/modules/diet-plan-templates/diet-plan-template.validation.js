@@ -60,6 +60,12 @@ export const createTemplateSchema = z.object({
     carbGrams: optionalFloat(0, "Carbohydrates"),
     fatGrams: optionalFloat(0, "Fat"),
     isPublic: z.boolean().default(false),
+    instructions: z.string().max(10000).nullable().optional(),
+    recommendations: z.string().max(10000).nullable().optional(),
+    lifestyleAdvice: z.string().max(10000).nullable().optional(),
+    hydration: z.string().max(10000).nullable().optional(),
+    supplementNotes: z.string().max(10000).nullable().optional(),
+    mealPrepNotes: z.string().max(10000).nullable().optional(),
   }),
 });
 
@@ -75,6 +81,12 @@ export const updateTemplateSchema = z.object({
     carbGrams: optionalFloat(0, "Carbohydrates"),
     fatGrams: optionalFloat(0, "Fat"),
     isPublic: z.boolean().optional(),
+    instructions: z.string().max(10000).nullable().optional(),
+    recommendations: z.string().max(10000).nullable().optional(),
+    lifestyleAdvice: z.string().max(10000).nullable().optional(),
+    hydration: z.string().max(10000).nullable().optional(),
+    supplementNotes: z.string().max(10000).nullable().optional(),
+    mealPrepNotes: z.string().max(10000).nullable().optional(),
   }),
 });
 

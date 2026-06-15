@@ -31,4 +31,14 @@ router.post(
   asyncHandler(pdfController.generateSamplePdf)
 );
 
+/**
+ * POST /api/v1/pdf/diet-plans/:id
+ * Generates and compiles a client diet plan PDF.
+ */
+router.post(
+  "/diet-plans/:id",
+  requireMinRole(ROLES.ASSISTANT),
+  asyncHandler(pdfController.generateDietPlanPdf)
+);
+
 export default router;

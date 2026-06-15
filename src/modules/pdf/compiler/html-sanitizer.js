@@ -46,6 +46,7 @@ const ALLOWED_STYLE_PROPERTIES = new Set([
   "border-style",
   "border-color",
   "border-radius",
+  "border-collapse",
   "text-align",
   "font-size",
   "font-weight",
@@ -62,6 +63,14 @@ const ALLOWED_STYLE_PROPERTIES = new Set([
   "overflow",
   "object-fit",
   "vertical-align",
+  "list-style-type",
+  "white-space",
+  "page-break-inside",
+  "break-inside",
+  "page-break-after",
+  "break-after",
+  "page-break-before",
+  "break-before",
 ]);
 
 /**
@@ -74,6 +83,9 @@ const ALLOWED_TAGS = new Set([
   "h1",
   "h2",
   "h3",
+  "h4",
+  "hr",
+  "a",
   "blockquote",
   "ul",
   "ol",
@@ -180,6 +192,10 @@ export function sanitizeTemplateHtml(html) {
           value.includes("javascript:")
         ) {
           el.removeAttribute(attr.name);
+        }
+        // Allow safe href on anchor tags
+        else if (name === "href") {
+          // href is already validated above for javascript: — keep it
         }
         // Validate inline style strings
         else if (name === "style") {

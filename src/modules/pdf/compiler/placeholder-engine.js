@@ -57,13 +57,29 @@ export const placeholderRenderer = {
       };
     }
 
+    if (key === "{{signature_block}}") {
+      const type = context.signatureType || "LINE";
+      const authorName = context.author_name || "Practitioner";
+      const signatureImageUrl = context.signatureImageUrl || null;
+      return {
+        type: "signature",
+        props: {
+          type,
+          authorName,
+          signatureImageUrl,
+        },
+      };
+    }
+
     // Fallback to registry text properties
     const placeholder = placeholderRegistry.get(key);
     if (placeholder) {
+      const plainKey = key.replace(/[{}]/g, "").trim();
+      const value = context[key] ?? context[plainKey] ?? "";
       return {
         type: "text",
         props: {
-          value: context[key] ?? placeholder.sampleValue ?? "",
+          value,
         },
       };
     }
@@ -98,6 +114,24 @@ export const placeholderRenderer = {
 
     if (structure.type === "watermark") {
       return ""; // Watermarks are positioned absolutely in background layers
+    }
+
+    if (structure.type === "signature") {
+      const { type, signatureImageUrl } = structure.props;
+      if (type === "NONE") return "";
+
+      if (type === "IMAGE" && signatureImageUrl) {
+        return `
+<div class="signature-block" style="margin-top: 8px; page-break-inside: avoid;">
+  <img src="${signatureImageUrl}" style="max-height: 60px; max-width: 250px; display: block;" />
+</div>`;
+      }
+
+      // Default: LINE
+      return `
+<div class="signature-block" style="margin-top: 8px; page-break-inside: avoid;">
+  <div style="border-bottom: 1px solid #000; width: 200px; height: 24px;"></div>
+</div>`;
     }
 
     if (structure.type === "text") {

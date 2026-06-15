@@ -153,6 +153,16 @@ model Tenant {
   measurementSystem MeasurementSystem @default(METRIC)
   pdfTemplateConfig Json?
 
+  // Practice branding fields
+  practiceEmail     String?
+  practicePhone     String?
+  addressLine1      String?
+  addressLine2      String?
+  city              String?
+  state             String?
+  country           String?
+  postalCode        String?
+
   // Timestamps
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -858,6 +868,14 @@ model DietPlan {
   totalCarbs    Float @default(0)
   totalFat      Float @default(0)
 
+  // Data Sections (HTML content from RichTextEditor)
+  instructions       String? @db.Text
+  recommendations    String? @db.Text
+  lifestyleAdvice    String? @db.Text
+  hydration          String? @db.Text
+  supplementNotes    String? @db.Text
+  mealPrepNotes      String? @db.Text
+
   // Versioning
   versionNumber Int @default(1)
 
@@ -1001,6 +1019,14 @@ model DietPlanTemplate {
   totalProtein  Float @default(0)
   totalCarbs    Float @default(0)
   totalFat      Float @default(0)
+
+  // Data Sections (HTML content from RichTextEditor)
+  instructions       String? @db.Text
+  recommendations    String? @db.Text
+  lifestyleAdvice    String? @db.Text
+  hydration          String? @db.Text
+  supplementNotes    String? @db.Text
+  mealPrepNotes      String? @db.Text
 
   isPublic  Boolean   @default(false)
   createdBy String

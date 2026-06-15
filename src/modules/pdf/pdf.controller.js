@@ -45,6 +45,27 @@ export const pdfController = {
   },
 
   /**
+   * POST /api/v1/pdf/diet-plans/:id
+   * Generates and downloads the PDF version of a client diet plan.
+   */
+  async generateDietPlanPdf(req, res) {
+    const tenantId = req.user.tenantId;
+    const { id } = req.params;
+    const options = req.body || {};
+
+    const pdfBuffer = await pdfService.generateDietPlanPdf(tenantId, id, options);
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="diet-plan-${id}.pdf"`
+    );
+    res.setHeader("Content-Length", pdfBuffer.length);
+
+    return res.send(pdfBuffer);
+  },
+
+  /**
    * GET /api/v1/pdf/health
    * Performs quick diagnostic check on browser running status.
    */
