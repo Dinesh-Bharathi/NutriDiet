@@ -7,6 +7,13 @@ import { metaMessageFormatter } from './providers/meta/meta-message.js';
 import { encrypt, decrypt } from '../../utils/encryption.js';
 import { emitTenantEvent } from '../../lib/socket.js';
 import ApiError from '../../utils/ApiError.js';
+
+export class AppError extends ApiError {
+  constructor(message, statusCode = 401) {
+    super(statusCode, message);
+    this.name = 'AppError';
+  }
+}
 import logger from '../../utils/logger.js';
 import { getRedisClient } from '../../lib/redis.js';
 import { logWhatsApp, logWhatsAppVerbose } from './whatsapp-logger.js';
@@ -428,7 +435,7 @@ export const whatsappService = {
    */
   async sendMessage(tenantId, userId, role, conversationId, payload) {
     if (!userId) {
-      throw ApiError.unauthorized('Authenticated user required for outbound WhatsApp messages');
+      throw new AppError('Authenticated user required for outbound WhatsApp messages', 401);
     }
 
     const user = await prisma.user.findFirst({
@@ -436,7 +443,16 @@ export const whatsappService = {
     });
 
     if (!user) {
-      throw ApiError.unauthorized('Authenticated user required for outbound WhatsApp messages');
+      throw new AppError('Authenticated user required for outbound WhatsApp messages', 401);
+    }
+
+    const senderName = `${user.firstName || ''} ${user.lastName || ''}`.trim();
+    if (!senderName) {
+      throw new AppError('Authenticated user required for outbound WhatsApp messages', 401);
+    }
+
+    if (!user.role) {
+      throw new AppError('Authenticated user required for outbound WhatsApp messages', 401);
     }
 
     const correlationId = crypto.randomUUID();

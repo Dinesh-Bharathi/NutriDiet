@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import env from '../../config/env.js';
 import logger from '../../utils/logger.js';
-import { whatsappService } from './whatsapp.service.js';
+import { whatsappService, AppError } from './whatsapp.service.js';
 import { whatsappConnectionUpsertSchema } from './whatsapp.validation.js';
 import { sendSuccess } from '../../utils/ApiResponse.js';
 import { HTTP_STATUS } from '../../config/constants.js';
@@ -117,10 +117,7 @@ export const whatsappController = {
    */
   async sendMessage(req, res) {
     if (!req.user || (!req.user.userId && !req.user.id)) {
-      return res.status(401).json({
-        success: false,
-        message: 'Authenticated user required for outbound WhatsApp messages'
-      });
+      throw new AppError('Authenticated user required for outbound WhatsApp messages', 401);
     }
 
     const tenantId = req.user.tenantId;
@@ -168,7 +165,7 @@ export const whatsappController = {
   async deleteMessage(req, res) {
     const tenantId = req.user.tenantId;
     const messageId = req.params.id;
-    const userId = req.user.id;
+    const userId = req.user.userId || req.user.id;
     
     const result = await whatsappService.softDeleteMessage(tenantId, userId, messageId);
     
@@ -279,22 +276,79 @@ export const whatsappController = {
    * Webhook payload ingestion. Verifies X-Hub-Signature-256 and pushes to queue.
    */
   async receiveWebhook(req, res) {
+    const signature = req.headers['x-hub-signature-256'];
+    const contentLength = req.headers['content-length'] || 'unknown';
+    const userAgent = req.headers['user-agent'] || 'unknown';
+    const timestampStr = new Date().toISOString();
+
+    // eslint-disable-next-line no-console
+    console.log(
+      `[WHATSAPP_WEBHOOK_RAW] Request arrived\n` +
+      `method=POST\n` +
+      `headers=x-hub-signature-256 present? ${signature ? 'yes' : 'no'}\n` +
+      `content-length=${contentLength}\n` +
+      `user-agent=${userAgent}\n` +
+      `timestamp=${timestampStr}`
+    );
+
+    const redis = getRedisClient();
+    if (redis) {
+      try {
+        await redis.incr('whatsapp:webhook:raw_requests');
+        await redis.set('whatsapp:webhook:last_raw_request_at', timestampStr);
+        await redis.set('whatsapp:webhook:debug:last_headers', JSON.stringify(req.headers), 'EX', 86400);
+        await redis.set('whatsapp:webhook:debug:last_body', typeof req.body === 'object' ? JSON.stringify(req.body) : String(req.body), 'EX', 86400);
+        await redis.set('whatsapp:webhook:debug:last_request_at', timestampStr, 'EX', 86400);
+      } catch (err) {
+        logger.warn('Failed to write raw webhook metrics to Redis', { error: err.message });
+      }
+    }
+
     logWhatsApp('[WHATSAPP_WEBHOOK]', {}, 'Webhook Received');
     logWhatsAppVerbose('[WHATSAPP_WEBHOOK]', {}, 'Raw Webhook Request Payload', req.body);
 
-    const signature = req.headers['x-hub-signature-256'];
-    const redis = getRedisClient();
-
     if (!signature) {
+      // eslint-disable-next-line no-console
+      console.log(
+        `[WHATSAPP_WEBHOOK]\n` +
+        `Signature verification FAILED\n` +
+        `Error: Missing x-hub-signature-256 header`
+      );
+      if (redis) {
+        try {
+          await redis.incr('whatsapp:metrics:webhook:errors');
+          await redis.set('whatsapp:webhook:last_signature_validation_result', 'false');
+          await redis.set('whatsapp:webhook:last_signature_validation_error', 'Missing x-hub-signature-256 header');
+          await redis.set('whatsapp:webhook:debug:last_signature_result', 'false', 'EX', 86400);
+        } catch (err) {
+          // ignore
+        }
+      }
       logWhatsApp('[WHATSAPP_WEBHOOK]', {}, 'Missing x-hub-signature-256 header.', 'warn');
-      if (redis) await redis.incr('whatsapp:metrics:webhook:errors');
+      logger.info('[WHATSAPP_WEBHOOK_EXIT] Exited receiveWebhook: Missing signature header.');
       return res.status(401).json({ success: false, message: 'Missing signature' });
     }
     
     const parts = signature.split('=');
     if (parts.length !== 2 || parts[0] !== 'sha256') {
+      // eslint-disable-next-line no-console
+      console.log(
+        `[WHATSAPP_WEBHOOK]\n` +
+        `Signature verification FAILED\n` +
+        `Error: Invalid signature format`
+      );
+      if (redis) {
+        try {
+          await redis.incr('whatsapp:metrics:webhook:errors');
+          await redis.set('whatsapp:webhook:last_signature_validation_result', 'false');
+          await redis.set('whatsapp:webhook:last_signature_validation_error', 'Invalid signature format');
+          await redis.set('whatsapp:webhook:debug:last_signature_result', 'false', 'EX', 86400);
+        } catch (err) {
+          // ignore
+        }
+      }
       logWhatsApp('[WHATSAPP_WEBHOOK]', {}, 'Invalid x-hub-signature-256 format.', 'warn');
-      if (redis) await redis.incr('whatsapp:metrics:webhook:errors');
+      logger.info('[WHATSAPP_WEBHOOK_EXIT] Exited receiveWebhook: Invalid signature format.');
       return res.status(400).json({ success: false, message: 'Invalid signature format' });
     }
     
@@ -307,6 +361,7 @@ export const whatsappController = {
     const digest = hmac.digest('hex');
     
     let isSignatureValid = false;
+    let timingError = null;
     try {
       isSignatureValid = crypto.timingSafeEqual(
         Buffer.from(digest, 'hex'),
@@ -314,14 +369,52 @@ export const whatsappController = {
       );
     } catch (err) {
       isSignatureValid = false;
+      timingError = err.message;
     }
     
+    const signatureLength = signatureHash ? signatureHash.length : 0;
+    const digestLength = digest ? digest.length : 0;
+
     if (!isSignatureValid) {
+      const errorMsg = timingError || 'Signature hash mismatch';
+      // eslint-disable-next-line no-console
+      console.log(
+        `[WHATSAPP_WEBHOOK]\n` +
+        `Signature verification FAILED\n` +
+        `Expected Hash Length: ${digestLength}, Received Hash Length: ${signatureLength}\n` +
+        `Detail: ${errorMsg}`
+      );
+      if (redis) {
+        try {
+          await redis.incr('whatsapp:metrics:webhook:errors');
+          await redis.set('whatsapp:webhook:last_signature_validation_result', 'false');
+          await redis.set('whatsapp:webhook:last_signature_validation_error', errorMsg);
+          await redis.set('whatsapp:webhook:debug:last_signature_result', 'false', 'EX', 86400);
+        } catch (err) {
+          // ignore
+        }
+      }
       logWhatsApp('[WHATSAPP_WEBHOOK]', {}, 'HMAC signature verification failed.', 'warn');
-      if (redis) await redis.incr('whatsapp:metrics:webhook:errors');
+      logger.info('[WHATSAPP_WEBHOOK_EXIT] Exited receiveWebhook: Signature verification failed.');
       return res.status(401).json({ success: false, message: 'Signature verification failed' });
     }
     
+    // eslint-disable-next-line no-console
+    console.log(
+      `[WHATSAPP_WEBHOOK]\n` +
+      `Signature verification PASSED\n` +
+      `Expected Hash Length: ${digestLength}, Received Hash Length: ${signatureLength}`
+    );
+    if (redis) {
+      try {
+        await redis.set('whatsapp:webhook:last_signature_validation_result', 'true');
+        await redis.set('whatsapp:webhook:last_signature_validation_error', '');
+        await redis.set('whatsapp:webhook:debug:last_signature_result', 'true', 'EX', 86400);
+      } catch (err) {
+        // ignore
+      }
+    }
+
     logWhatsApp('[WHATSAPP_WEBHOOK]', {}, 'Webhook Signature Verified');
 
     // Push payload to BullMQ queue
@@ -330,6 +423,7 @@ export const whatsappController = {
     logWhatsApp('[WHATSAPP_WEBHOOK]', {}, `Webhook Queued: jobId=${job.id}`);
     logWhatsApp('[WHATSAPP_QUEUE]', { messageId: job.id }, 'Job queued: Queue=whatsapp-webhook-queue');
 
+    logger.info(`[WHATSAPP_WEBHOOK_EXIT] Exited receiveWebhook: Successfully queued webhook job ${job.id}`);
     return res.status(200).json({ success: true, message: 'Webhook received and queued' });
   },
 
@@ -371,6 +465,11 @@ export const whatsappController = {
     let failedJobs = 0;
     let retryJobs = 0;
     let lastSocketConnectionAt = null;
+    
+    let rawWebhookRequests = 0;
+    let lastRawWebhookRequestAt = null;
+    let lastSignatureValidationResult = null;
+    let lastSignatureValidationError = "";
 
     if (redis) {
       if (wabaId) {
@@ -421,6 +520,16 @@ export const whatsappController = {
 
       const rj = await redis.get("whatsapp:metrics:queue:retries");
       retryJobs = rj ? parseInt(rj, 10) : 0;
+
+      const rwReqs = await redis.get('whatsapp:webhook:raw_requests');
+      rawWebhookRequests = rwReqs ? parseInt(rwReqs, 10) : 0;
+      lastRawWebhookRequestAt = await redis.get('whatsapp:webhook:last_raw_request_at');
+
+      const sigResult = await redis.get('whatsapp:webhook:last_signature_validation_result');
+      if (sigResult !== null) {
+        lastSignatureValidationResult = sigResult === 'true';
+      }
+      lastSignatureValidationError = await redis.get('whatsapp:webhook:last_signature_validation_error') || "";
     }
 
     // 3. Meta API Configured status
@@ -488,6 +597,12 @@ export const whatsappController = {
         lastWebhookPhoneNumberId,
         lastWebhookWabaId,
         lastSocketConnectionAt,
+        lastInboundMessageAt,
+        lastOutboundMessageAt,
+        rawWebhookRequests,
+        lastRawWebhookRequestAt,
+        lastSignatureValidationResult,
+        lastSignatureValidationError,
         metaApiConfigured,
         queue: queueMetrics,
         messaging: {
@@ -526,6 +641,56 @@ export const whatsappController = {
   },
 
   /**
+   * GET /api/v1/whatsapp/debug/webhook
+   * Returns details of the last raw webhook received (headers, body, signature check result).
+   */
+  async getWebhookDebug(req, res) {
+    const redis = getRedisClient();
+    
+    let lastHeaders = {};
+    let lastRequestBody = {};
+    let lastSignatureResult = null;
+    let lastRequestAt = null;
+
+    if (redis) {
+      const headersStr = await redis.get('whatsapp:webhook:debug:last_headers');
+      if (headersStr) {
+        try {
+          lastHeaders = JSON.parse(headersStr);
+        } catch (err) {
+          lastHeaders = {};
+        }
+      }
+
+      const bodyStr = await redis.get('whatsapp:webhook:debug:last_body');
+      if (bodyStr) {
+        try {
+          lastRequestBody = JSON.parse(bodyStr);
+        } catch (err) {
+          lastRequestBody = bodyStr;
+        }
+      }
+
+      const sigResult = await redis.get('whatsapp:webhook:debug:last_signature_result');
+      if (sigResult !== null) {
+        lastSignatureResult = sigResult === 'true';
+      }
+
+      lastRequestAt = await redis.get('whatsapp:webhook:debug:last_request_at');
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        lastHeaders,
+        lastRequestBody,
+        lastSignatureResult,
+        lastRequestAt,
+      }
+    });
+  },
+
+  /**
    * POST /api/v1/whatsapp/test-message
    * Dev-only integration check to trigger end-to-end diagnostics message sending.
    */
@@ -538,7 +703,7 @@ export const whatsappController = {
     }
 
     const tenantId = req.user.tenantId;
-    const userId = req.user.id;
+    const userId = req.user.userId || req.user.id;
     const role = req.user.role;
     const { recipientPhone, body = 'Hello! This is a diagnostics test message from NutriDiet.' } = req.body;
 

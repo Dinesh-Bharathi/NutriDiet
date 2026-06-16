@@ -407,8 +407,8 @@ export const whatsappWebhookService = {
       }
     }
 
-    // Save diagnostics last webhook payload
-    if (redis && tenantIdResolved) {
+    // Save diagnostics last webhook payload (unconditionally, to aid troubleshooting)
+    if (redis) {
       let eventType = "unknown";
       let phoneId = null;
       let wabaId = null;
@@ -427,16 +427,36 @@ export const whatsappWebhookService = {
         }
       }
 
+      // Try resolving tenant ID for diagnostic logging if database has it
+      let diagnosticTenantId = tenantIdResolved;
+      if (!diagnosticTenantId && wabaId && phoneId) {
+        try {
+          const conn = await prisma.whatsAppConnection.findFirst({
+            where: { wabaId, phoneNumberId: phoneId },
+            select: { tenantId: true }
+          });
+          if (conn) {
+            diagnosticTenantId = conn.tenantId;
+          }
+        } catch (err) {
+          // ignore database error during diagnostics logging
+        }
+      }
+
       const diagnosticPayload = {
         timestamp: new Date().toISOString(),
         eventType,
-        wabaId,
-        phoneNumberId: phoneId,
-        tenantId: tenantIdResolved,
+        wabaId: wabaId || null,
+        phoneNumberId: phoneId || null,
+        tenantId: diagnosticTenantId || null,
         rawPayload: payload,
       };
 
-      await redis.set("whatsapp:webhook:last_payload", JSON.stringify(diagnosticPayload), "EX", 86400);
+      try {
+        await redis.set("whatsapp:webhook:last_payload", JSON.stringify(diagnosticPayload), "EX", 86400);
+      } catch (err) {
+        // ignore
+      }
     }
 
     const duration = Date.now() - startTime;

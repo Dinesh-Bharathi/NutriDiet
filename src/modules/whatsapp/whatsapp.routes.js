@@ -30,6 +30,13 @@ router.get(
   asyncHandler(whatsappController.getHealthDiagnostics)
 );
 
+// GET webhook debug details (ASSISTANT or higher)
+router.get(
+  '/debug/webhook',
+  requireMinRole(ROLES.ASSISTANT),
+  asyncHandler(whatsappController.getWebhookDebug)
+);
+
 // POST diagnostic test message (ADMIN or higher, dev-only)
 router.post(
   '/test-message',
