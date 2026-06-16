@@ -24,6 +24,14 @@ datasource db {
 // ENUMS
 // ─────────────────────────────────────────────────────────────────────────────
 
+enum WhatsAppConnectionStatus {
+  NOT_CONFIGURED
+  CONNECTED
+  DISCONNECTED
+  ERROR
+  PENDING
+}
+
 enum Role {
   OWNER
   ADMIN
@@ -195,6 +203,9 @@ model Tenant {
   assessmentSnapshots         AssessmentSnapshot[]
   fileAssets                  FileAsset[]
   vaultDocuments              VaultDocument[]
+  whatsAppConnection          WhatsAppConnection?
+  whatsAppConversations       WhatsAppConversation[]
+  whatsAppMessages            WhatsAppMessage[]
 
   @@index([slug])
   @@index([status])
@@ -243,6 +254,7 @@ model User {
   generatedRiskFlags           ClientRiskFlag[]          @relation("RiskFlagGenerator")
   generatedAssessmentSnapshots AssessmentSnapshot[]      @relation("AssessmentSnapshotGenerator")
   uploadedFiles                FileAsset[]               @relation("FileUploader")
+  whatsAppMessages             WhatsAppMessage[]
 
   // Compound unique: email must be unique within a tenant (not globally)
   @@unique([tenantId, email])
@@ -304,6 +316,7 @@ model Client {
   riskFlags                 ClientRiskFlag[]
   assessmentSnapshots       AssessmentSnapshot[]
   vaultDocuments            VaultDocument[]
+  whatsAppConversations     WhatsAppConversation[]
 
   @@index([tenantId])
   @@index([tenantId, dietitianId])
@@ -1407,6 +1420,7 @@ enum FileEntityType {
   PROGRAM_CONTENT
   APPOINTMENT
   INVOICE
+  WHATSAPP_MESSAGE
   OTHER
 }
 
@@ -1451,8 +1465,10 @@ model FileAsset {
 
   tenant   Tenant         @relation(fields: [tenantId], references: [id])
   user            User           @relation("FileUploader", fields: [uploadedBy], references: [id])
-  clientsAsAvatar Client[]       @relation("ClientAvatar")
-  vaultDocument   VaultDocument?
+  clientsAsAvatar   Client[]         @relation("ClientAvatar")
+  vaultDocument     VaultDocument?
+  whatsAppMessageId String?
+  whatsAppMessage   WhatsAppMessage? @relation(fields: [whatsAppMessageId], references: [id])
 
   @@index([tenantId])
   @@index([tenantId, entityType, entityId])
@@ -1480,6 +1496,176 @@ model VaultDocument {
 
   @@index([tenantId, clientId, deletedAt])
   @@map("vault_documents")
+}
+
+model WhatsAppConnection {
+  id String @id @default(cuid())
+
+  tenantId String @unique
+
+  status WhatsAppConnectionStatus @default(NOT_CONFIGURED)
+
+  provider           String? @default("WHATSAPP")
+  tokenType          String?
+  scope              String?
+  metaBusinessId     String?
+
+  wabaId             String?
+  phoneNumberId      String?
+  businessAccountId  String?
+
+  displayPhoneNumber String?
+  verifiedName       String?
+
+  accessToken        String?
+  refreshToken       String?
+
+  tokenExpiresAt     DateTime?
+
+  webhookVerified    Boolean @default(false)
+
+  connectedAt        DateTime?
+  lastSyncAt         DateTime?
+  
+  lastValidatedAt            DateTime?
+  lastSuccessfulValidationAt DateTime?
+  lastError                  String?
+  lastErrorCode              String?
+  lastErrorAt                DateTime?
+  validationAttempts         Int      @default(0)
+  credentialFingerprint      String?
+
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  tenant             Tenant @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId])
+  @@map("whatsapp_connections")
+}
+
+enum WhatsAppSenderType {
+  USER
+  SYSTEM
+  CLIENT
+}
+
+enum WhatsAppMessageSource {
+  MANUAL
+  AUTOMATION
+  AI
+  API
+}
+
+enum WhatsAppMessageDirection {
+  INBOUND
+  OUTBOUND
+}
+
+enum WhatsAppMessageType {
+  TEXT
+  TEMPLATE
+  DOCUMENT
+  IMAGE
+  AUDIO
+  VIDEO
+  LOCATION
+  CONTACT
+}
+
+enum WhatsAppMessageStatus {
+  QUEUED
+  SENT
+  DELIVERED
+  READ
+  FAILED
+}
+
+model WhatsAppConversation {
+  id                        String                @id @default(cuid())
+  tenantId                  String
+  clientId                  String
+  
+  optInStatus               Boolean               @default(false)
+  optInCapturedAt           DateTime?
+  
+  lastMessageId             String?
+  lastMessageText           String?               @db.VarChar(500)
+  lastMessageAt             DateTime?
+  unreadCount               Int                   @default(0)
+  
+  isArchived                Boolean               @default(false)
+  isMuted                   Boolean               @default(false)
+  
+  conversationStartedAt     DateTime?
+  lastInboundAt             DateTime?
+  lastOutboundAt            DateTime?
+  lastClientMessageAt       DateTime?
+  lastPractitionerMessageAt DateTime?
+  
+  createdAt                 DateTime              @default(now())
+  updatedAt                 DateTime              @updatedAt
+  
+  tenant                    Tenant                @relation(fields: [tenantId], references: [id])
+  client                    Client                @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  messages                  WhatsAppMessage[]
+
+  @@unique([tenantId, clientId])
+  @@index([tenantId])
+  @@index([clientId])
+  @@map("whatsapp_conversations")
+}
+
+model WhatsAppMessage {
+  id                String                   @id @default(cuid())
+  tenantId          String
+  conversationId    String
+  metaMessageId     String?                  @unique
+  
+  direction         WhatsAppMessageDirection
+  type              WhatsAppMessageType
+  status            WhatsAppMessageStatus    @default(QUEUED)
+  senderType        WhatsAppSenderType
+  source            WhatsAppMessageSource    @default(MANUAL)
+  
+  body              String?                  @db.Text
+  templateName      String?
+  templateLanguage  String?                  @db.VarChar(10)
+  
+  mediaMimeType     String?                  @db.VarChar(100)
+  mediaSize         Int?
+  
+  senderUserId      String?
+  senderRole        Role?
+  senderName        String?                  @db.VarChar(100)
+  senderPhone       String?                  @db.VarChar(30)
+  createdByUserId   String?
+  
+  errorText         String?                  @db.Text
+  lastErrorCode     String?                  @db.VarChar(50)
+  
+  sentAt            DateTime?
+  deliveredAt       DateTime?
+  readAt            DateTime?
+  failedAt          DateTime?
+  
+  deletedAt         DateTime?
+  deletedByUserId   String?
+  
+  createdAt         DateTime                 @default(now())
+  updatedAt         DateTime                 @updatedAt
+
+  tenant            Tenant                   @relation(fields: [tenantId], references: [id])
+  conversation      WhatsAppConversation     @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  senderUser        User?                    @relation(fields: [senderUserId], references: [id], onDelete: SetNull)
+  attachments       FileAsset[]
+
+  @@index([tenantId])
+  @@index([conversationId])
+  @@index([metaMessageId])
+  @@index([senderUserId])
+  @@index([createdAt])
+  @@map("whatsapp_messages")
 }
 
 

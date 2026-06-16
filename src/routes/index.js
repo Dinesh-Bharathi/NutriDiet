@@ -61,6 +61,10 @@ router.use('/reviews', progressRouter);
 import settingsRouter from '../modules/settings/settings.routes.js';
 router.use('/settings', settingsRouter);
 
+// WhatsApp integration routes (protected)
+import whatsappRouter from '../modules/whatsapp/whatsapp.routes.js';
+router.use('/whatsapp', whatsappRouter);
+
 // Repeat Cycles & Template Cycles (protected)
 import cycleRouter from '../modules/diet-plans/cycle.routes.js';
 import templateCycleRouter from '../modules/diet-plan-templates/template-cycle.routes.js';

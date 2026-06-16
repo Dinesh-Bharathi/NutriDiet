@@ -3,15 +3,15 @@
 // Redis client singleton using ioredis.
 // Used for: refresh token rotation, session caching, rate-limit state, etc.
 // ─────────────────────────────────────────────────────────────────────────────
-import Redis from 'ioredis';
-import env from '../config/env.js';
-import logger from '../utils/logger.js';
+import Redis from "ioredis";
+import env from "../config/env.js";
+import logger from "../utils/logger.js";
 
 let redisClient = null;
-const redisEnabled = !!(env.REDIS_URL || env.REDIS_HOST);
+const redisEnabled = !!env.REDIS_URL;
 
 if (!redisEnabled) {
-  logger.info('Redis disabled - REDIS_URL and REDIS_HOST not configured');
+  logger.info("Redis disabled - REDIS_URL and REDIS_HOST not configured");
 }
 
 /**
@@ -35,7 +35,9 @@ export function getRedisClient() {
       retryStrategy(times) {
         // Exponential backoff, capping at 4s
         const delay = Math.min(times * 150, 4000);
-        logger.warn(`Redis connection retry attempt ${times}. Reconnecting in ${delay}ms...`);
+        logger.warn(
+          `Redis connection retry attempt ${times}. Reconnecting in ${delay}ms...`,
+        );
         return delay;
       },
     };
@@ -58,32 +60,32 @@ export function getRedisClient() {
       });
     }
 
-    redisClient.on('connect', () => {
-      logger.info('Redis client connected');
+    redisClient.on("connect", () => {
+      logger.info("Redis client connected");
     });
 
-    redisClient.on('ready', () => {
-      logger.info('Redis client ready');
+    redisClient.on("ready", () => {
+      logger.info("Redis client ready");
     });
 
-    redisClient.on('error', (err) => {
+    redisClient.on("error", (err) => {
       // Don't spam logs with connection refused if we are handling it gracefully
-      if (err.code !== 'ECONNREFUSED') {
-        logger.error('Redis client error', { error: err.message });
+      if (err.code !== "ECONNREFUSED") {
+        logger.error("Redis client error", { error: err.message });
       }
     });
 
-    redisClient.on('close', () => {
-      logger.warn('Redis connection closed');
+    redisClient.on("close", () => {
+      logger.warn("Redis connection closed");
     });
 
-    redisClient.on('reconnecting', () => {
-      logger.warn('Redis client reconnecting...');
+    redisClient.on("reconnecting", () => {
+      logger.warn("Redis client reconnecting...");
     });
-    
+
     // Trigger initial connection
     redisClient.connect().catch((err) => {
-      logger.warn('Redis initial connection failed', { error: err.message });
+      logger.warn("Redis initial connection failed", { error: err.message });
     });
   }
 
@@ -96,7 +98,7 @@ export function getRedisClient() {
  * @returns {boolean}
  */
 export function isRedisAvailable() {
-  return !!redisClient && redisClient.status === 'ready';
+  return !!redisClient && redisClient.status === "ready";
 }
 
 /**
@@ -106,9 +108,9 @@ export async function disconnectRedis() {
   if (redisClient) {
     try {
       await redisClient.quit();
-      logger.info('Redis connection closed');
+      logger.info("Redis connection closed");
     } catch (err) {
-      logger.warn('Error disconnecting Redis', { error: err.message });
+      logger.warn("Error disconnecting Redis", { error: err.message });
     }
   }
 }
@@ -121,7 +123,7 @@ export async function disconnectRedis() {
  */
 export async function connectRedis() {
   if (!redisEnabled) {
-    logger.info('Redis is disabled. Skipping connection wait.');
+    logger.info("Redis is disabled. Skipping connection wait.");
     return null;
   }
 
@@ -130,7 +132,7 @@ export async function connectRedis() {
     return null;
   }
 
-  if (client.status === 'ready') {
+  if (client.status === "ready") {
     return client;
   }
 
@@ -141,13 +143,15 @@ export async function connectRedis() {
       if (!resolved) {
         resolved = true;
         cleanup();
-        logger.info('Redis connection successfully verified at startup');
+        logger.info("Redis connection successfully verified at startup");
         resolve(client);
       }
     };
 
     const onError = (err) => {
-      logger.warn('Redis connection issue during startup', { error: err.message });
+      logger.warn("Redis connection issue during startup", {
+        error: err.message,
+      });
     };
 
     // Setup a 5-second timeout for startup synchronization
@@ -155,22 +159,24 @@ export async function connectRedis() {
       if (!resolved) {
         resolved = true;
         cleanup();
-        logger.warn('Redis startup connection wait timed out. Continuing application boot offline.');
+        logger.warn(
+          "Redis startup connection wait timed out. Continuing application boot offline.",
+        );
         resolve(client);
       }
     }, 5000);
 
     const cleanup = () => {
       clearTimeout(timeout);
-      client.off('ready', onReady);
-      client.off('error', onError);
+      client.off("ready", onReady);
+      client.off("error", onError);
     };
 
-    client.on('ready', onReady);
-    client.on('error', onError);
+    client.on("ready", onReady);
+    client.on("error", onError);
 
     // If client is in wait state, call connect
-    if (client.status === 'wait') {
+    if (client.status === "wait") {
       client.connect().catch(() => {});
     }
   });
@@ -192,7 +198,7 @@ async function safeRedisOp(operation, defaultValue) {
     const client = getRedisClient();
     return await operation(client);
   } catch (err) {
-    logger.error('Redis operation error', { error: err.message });
+    logger.error("Redis operation error", { error: err.message });
     return defaultValue;
   }
 }
@@ -227,9 +233,9 @@ export async function get(key) {
  */
 export async function set(key, value, ttlSeconds = null) {
   return safeRedisOp(async (redis) => {
-    const strValue = typeof value === 'string' ? value : JSON.stringify(value);
+    const strValue = typeof value === "string" ? value : JSON.stringify(value);
     if (ttlSeconds) {
-      await redis.set(key, strValue, 'EX', ttlSeconds);
+      await redis.set(key, strValue, "EX", ttlSeconds);
     } else {
       await redis.set(key, strValue);
     }
@@ -286,17 +292,20 @@ export async function expire(key, ttlSeconds) {
  */
 export async function mget(keys) {
   if (!keys || keys.length === 0) return [];
-  return safeRedisOp(async (redis) => {
-    const values = await redis.mget(keys);
-    return values.map((val) => {
-      if (val === null) return null;
-      try {
-        return JSON.parse(val);
-      } catch {
-        return val;
-      }
-    });
-  }, keys.map(() => null));
+  return safeRedisOp(
+    async (redis) => {
+      const values = await redis.mget(keys);
+      return values.map((val) => {
+        if (val === null) return null;
+        try {
+          return JSON.parse(val);
+        } catch {
+          return val;
+        }
+      });
+    },
+    keys.map(() => null),
+  );
 }
 
 /**
@@ -311,7 +320,7 @@ export async function mset(keyValuePairs) {
     const flatPairs = [];
     for (const [key, val] of Object.entries(keyValuePairs)) {
       flatPairs.push(key);
-      flatPairs.push(typeof val === 'string' ? val : JSON.stringify(val));
+      flatPairs.push(typeof val === "string" ? val : JSON.stringify(val));
     }
     if (flatPairs.length > 0) {
       await redis.mset(flatPairs);
