@@ -427,6 +427,18 @@ export const whatsappService = {
    * @returns {Promise<object>}
    */
   async sendMessage(tenantId, userId, role, conversationId, payload) {
+    if (!userId) {
+      throw ApiError.unauthorized('Authenticated user required for outbound WhatsApp messages');
+    }
+
+    const user = await prisma.user.findFirst({
+      where: { id: userId, tenantId },
+    });
+
+    if (!user) {
+      throw ApiError.unauthorized('Authenticated user required for outbound WhatsApp messages');
+    }
+
     const correlationId = crypto.randomUUID();
     const redis = getRedisClient();
 
@@ -495,15 +507,15 @@ export const whatsappService = {
         type: payload.type === 'MEDIA' ? (payload.mediaType || 'DOCUMENT') : payload.type,
         status: 'QUEUED',
         senderType: 'USER',
-        source: 'MANUAL',
+        source: payload.source || 'MANUAL',
         body: payload.body || payload.templateName || null,
         mediaMimeType: mimeType,
         mediaSize: size,
-        senderUserId: userId,
-        senderRole: role,
-        senderName: payload.senderName || 'Staff',
+        senderUserId: user.id,
+        senderRole: user.role,
+        senderName: `${user.firstName} ${user.lastName}`,
         senderPhone: connection.displayPhoneNumber || '',
-        createdByUserId: userId,
+        createdByUserId: user.id,
       },
     });
 
@@ -512,7 +524,7 @@ export const whatsappService = {
       await redis.set(`whatsapp:correlation:local:${createdMsg.id}`, correlationId, 'EX', 604800);
     }
 
-    logWhatsApp('[WHATSAPP_SEND]', { correlationId, messageId: createdMsg.id, tenantId }, `Message Send Request: conversationId=${conversationId}, clientId=${conversation.clientId}, recipient=${client.phone}, type=${payload.type}, senderUser=${userId}`);
+    logWhatsApp('[WHATSAPP_SEND]', { correlationId, messageId: createdMsg.id, tenantId }, `Message Send Request: conversationId=${conversationId}, clientId=${conversation.clientId}, recipient=${client.phone}, type=${payload.type}, senderUser=${user.id}`);
 
     // Link attachments if provided
     if (payload.attachmentIds && payload.attachmentIds.length > 0) {
@@ -536,6 +548,7 @@ export const whatsappService = {
 
       if (redis && wamid) {
         await redis.set(`whatsapp:correlation:wamid:${wamid}`, correlationId, 'EX', 604800);
+        await redis.incr('whatsapp:metrics:outbound:sent');
       }
 
       logWhatsApp('[WHATSAPP_META]', { correlationId, messageId: createdMsg.id, metaMessageId: wamid, tenantId }, `Meta API Response: status=200, metaMessageId=${wamid}`);

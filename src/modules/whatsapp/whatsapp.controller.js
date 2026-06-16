@@ -116,9 +116,16 @@ export const whatsappController = {
    * Sends an outbound text, template, or media message.
    */
   async sendMessage(req, res) {
+    if (!req.user || (!req.user.userId && !req.user.id)) {
+      return res.status(401).json({
+        success: false,
+        message: 'Authenticated user required for outbound WhatsApp messages'
+      });
+    }
+
     const tenantId = req.user.tenantId;
     const conversationId = req.params.id;
-    const userId = req.user.id;
+    const userId = req.user.userId || req.user.id;
     const role = req.user.role;
     
     const message = await whatsappService.sendMessage(
@@ -349,14 +356,43 @@ export const whatsappController = {
     const webhookVerificationStatus = connection?.webhookVerified || false;
     
     let lastWebhookReceivedAt = null;
+    let lastWebhookEventType = null;
+    let lastWebhookPhoneNumberId = null;
+    let lastWebhookWabaId = null;
     let webhookMessagesReceived = 0;
     let webhookStatusesReceived = 0;
     let webhookErrors = 0;
+    
+    let readReceiptsReceived = 0;
+    let outboundMessagesSent = 0;
+    let authenticatedConnections = 0;
+    let failedConnections = 0;
+    let processedJobs = 0;
+    let failedJobs = 0;
+    let retryJobs = 0;
+    let lastSocketConnectionAt = null;
 
     if (redis) {
       if (wabaId) {
         lastWebhookReceivedAt = await redis.get(`whatsapp:webhook:last_received_at:${wabaId}`);
       }
+      
+      const lastPayloadStr = await redis.get("whatsapp:webhook:last_payload");
+      if (lastPayloadStr) {
+        try {
+          const lp = JSON.parse(lastPayloadStr);
+          lastWebhookReceivedAt = lp.timestamp;
+          lastWebhookEventType = lp.eventType;
+          lastWebhookPhoneNumberId = lp.phoneNumberId;
+          lastWebhookWabaId = lp.wabaId;
+        } catch (err) {
+          // ignore
+        }
+      }
+
+      const lastSocketConn = await redis.get(`whatsapp:socket:last_connection_at:${tenantId}`);
+      lastSocketConnectionAt = lastSocketConn || null;
+
       const msgCount = await redis.get('whatsapp:metrics:webhook:messages');
       const statusCount = await redis.get('whatsapp:metrics:webhook:statuses');
       const errCount = await redis.get('whatsapp:metrics:webhook:errors');
@@ -364,6 +400,27 @@ export const whatsappController = {
       webhookMessagesReceived = msgCount ? parseInt(msgCount, 10) : 0;
       webhookStatusesReceived = statusCount ? parseInt(statusCount, 10) : 0;
       webhookErrors = errCount ? parseInt(errCount, 10) : 0;
+
+      const rr = await redis.get("whatsapp:metrics:webhook:read_receipts");
+      readReceiptsReceived = rr ? parseInt(rr, 10) : 0;
+
+      const oms = await redis.get("whatsapp:metrics:outbound:sent");
+      outboundMessagesSent = oms ? parseInt(oms, 10) : 0;
+
+      const ac = await redis.get("whatsapp:metrics:socket:authenticated");
+      authenticatedConnections = ac ? parseInt(ac, 10) : 0;
+
+      const fc = await redis.get("whatsapp:metrics:socket:failed");
+      failedConnections = fc ? parseInt(fc, 10) : 0;
+
+      const pj = await redis.get("whatsapp:metrics:queue:processed");
+      processedJobs = pj ? parseInt(pj, 10) : 0;
+
+      const fj = await redis.get("whatsapp:metrics:queue:failed");
+      failedJobs = fj ? parseInt(fj, 10) : 0;
+
+      const rj = await redis.get("whatsapp:metrics:queue:retries");
+      retryJobs = rj ? parseInt(rj, 10) : 0;
     }
 
     // 3. Meta API Configured status
@@ -408,6 +465,14 @@ export const whatsappController = {
     // 6. Socket Connections
     const activeConnections = getActiveConnectionsCount(tenantId);
 
+    // 7. Conversation metrics
+    const activeConversations = await prisma.whatsAppConversation.count({
+      where: { tenantId, isArchived: false }
+    });
+    const archivedConversations = await prisma.whatsAppConversation.count({
+      where: { tenantId, isArchived: true }
+    });
+
     logWhatsApp('[WHATSAPP_HEALTH]', { tenantId }, `Diagnostics status requested. Connection=${connectionStatus}`);
 
     return res.status(200).json({
@@ -419,6 +484,10 @@ export const whatsappController = {
         webhookConfigured,
         webhookVerificationStatus,
         lastWebhookReceivedAt,
+        lastWebhookEventType,
+        lastWebhookPhoneNumberId,
+        lastWebhookWabaId,
+        lastSocketConnectionAt,
         metaApiConfigured,
         queue: queueMetrics,
         messaging: {
@@ -430,7 +499,28 @@ export const whatsappController = {
         },
         webhookMessagesReceived,
         webhookStatusesReceived,
-        webhookErrors
+        webhookErrors,
+        metrics: {
+          webhook: {
+            inboundMessagesReceived: webhookMessagesReceived,
+            outboundMessagesSent,
+            statusReceiptsReceived: webhookStatusesReceived,
+            readReceiptsReceived
+          },
+          socket: {
+            authenticatedConnections,
+            failedConnections
+          },
+          queue: {
+            processedJobs,
+            failedJobs,
+            retryJobs
+          },
+          conversation: {
+            activeConversations,
+            archivedConversations
+          }
+        }
       }
     });
   },

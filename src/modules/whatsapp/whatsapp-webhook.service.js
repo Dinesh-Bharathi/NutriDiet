@@ -126,7 +126,12 @@ export const whatsappWebhookService = {
 
             if (mappedStatus === "SENT") updateFields.sentAt = timestamp;
             if (mappedStatus === "DELIVERED") updateFields.deliveredAt = timestamp;
-            if (mappedStatus === "READ") updateFields.readAt = timestamp;
+            if (mappedStatus === "READ") {
+              updateFields.readAt = timestamp;
+              if (redis) {
+                await redis.incr('whatsapp:metrics:webhook:read_receipts');
+              }
+            }
             if (mappedStatus === "FAILED") {
               updateFields.failedAt = timestamp;
               const error = statusUpdate.errors?.[0];
@@ -223,6 +228,9 @@ export const whatsappWebhookService = {
             const fromPhone = messageData.from; // e.g. "61412345678"
             const timestamp = new Date(parseInt(messageData.timestamp, 10) * 1000);
 
+            // Log Inbound Message Received
+            logWhatsApp('[WHATSAPP_WEBHOOK] Inbound message received', { metaMessageId: wamid, from: fromPhone });
+
             // Increment incoming message counter
             if (redis) {
               await redis.incr('whatsapp:metrics:webhook:messages');
@@ -249,15 +257,25 @@ export const whatsappWebhookService = {
             logWhatsAppVerbose('[WHATSAPP_WEBHOOK]', { correlationId, metaMessageId: wamid, tenantId }, 'Raw Incoming Message Payload', messageData);
 
             // Match sender phone to a Client record in the active tenant workspace
-            const client = await prisma.client.findFirst({
+            const clients = await prisma.client.findMany({
               where: {
                 tenantId,
-                OR: [
-                  { phone: fromPhone },
-                  { phone: `+${fromPhone}` },
-                  { phone: { endsWith: fromPhone.slice(-9) } }, // Handles local prefixes
-                ],
               },
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                phone: true,
+              },
+            });
+
+            const cleanPhone = (num) => num ? num.replace(/[-\s()+]/g, '') : '';
+            const normalizedFrom = cleanPhone(fromPhone).slice(-10);
+
+            const client = clients.find((c) => {
+              if (!c.phone) return false;
+              const normalizedDb = cleanPhone(c.phone).slice(-10);
+              return normalizedDb === normalizedFrom;
             });
 
             if (!client) {
@@ -267,6 +285,8 @@ export const whatsappWebhookService = {
               }
               continue;
             }
+
+            logWhatsApp('[WHATSAPP_WEBHOOK] Tenant resolved', { tenantId });
 
             // Get or create conversation for this client
             const conversation = await prisma.whatsAppConversation.upsert({
@@ -290,6 +310,8 @@ export const whatsappWebhookService = {
                 lastInboundAt: timestamp,
               },
             });
+
+            logWhatsApp('[WHATSAPP_WEBHOOK] Conversation resolved', { tenantId, conversationId: conversation.id });
 
             // Map message types and handle optimizations
             const rawType = String(messageData.type).toUpperCase();
@@ -326,7 +348,7 @@ export const whatsappWebhookService = {
               mediaMimeType: mimeType,
               mediaSize: fileSize,
               senderPhone: fromPhone,
-              senderName: value.contacts?.[0]?.profile?.name || client.firstName,
+              senderName: `${client.firstName} ${client.lastName}`, // Keep client name standard
               deliveredAt: timestamp,
               createdAt: timestamp,
             };
@@ -340,6 +362,8 @@ export const whatsappWebhookService = {
               },
               create: createFields,
             });
+
+            logWhatsApp('[WHATSAPP_WEBHOOK] Message persisted', { tenantId, messageId: savedMessage.id });
 
             if (redis) {
               await redis.set(`whatsapp:correlation:local:${savedMessage.id}`, correlationId, 'EX', 604800);
@@ -375,10 +399,44 @@ export const whatsappWebhookService = {
               correlationId,
               receiptHistory,
             });
+
+            logWhatsApp('[WHATSAPP_SOCKET] Inbound message broadcasted', { tenantId, messageId: savedMessage.id });
             emitTenantEvent(tenantId, "whatsapp:conversation_update", updatedConv);
           }
         }
       }
+    }
+
+    // Save diagnostics last webhook payload
+    if (redis && tenantIdResolved) {
+      let eventType = "unknown";
+      let phoneId = null;
+      let wabaId = null;
+      for (const entry of payload.entry || []) {
+        wabaId = entry.id;
+        for (const change of entry.changes || []) {
+          if (change.field === "messages") {
+            const val = change.value;
+            phoneId = val?.metadata?.phone_number_id;
+            if (val?.messages && val.messages.length > 0) {
+              eventType = "messages";
+            } else if (val?.statuses && val.statuses.length > 0) {
+              eventType = "statuses";
+            }
+          }
+        }
+      }
+
+      const diagnosticPayload = {
+        timestamp: new Date().toISOString(),
+        eventType,
+        wabaId,
+        phoneNumberId: phoneId,
+        tenantId: tenantIdResolved,
+        rawPayload: payload,
+      };
+
+      await redis.set("whatsapp:webhook:last_payload", JSON.stringify(diagnosticPayload), "EX", 86400);
     }
 
     const duration = Date.now() - startTime;

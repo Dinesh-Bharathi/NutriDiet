@@ -1,7 +1,7 @@
 import { Worker } from "bullmq";
 import prisma from "../../../lib/prisma.js";
 import { whatsappWebhookService } from "../whatsapp-webhook.service.js";
-import { getRedisConnectionConfig } from "../../../lib/redis.js";
+import { getRedisConnectionConfig, getRedisClient } from "../../../lib/redis.js";
 import { logWhatsApp } from "../whatsapp-logger.js";
 
 const connectionConfig = getRedisConnectionConfig();
@@ -11,6 +11,11 @@ export const webhookWorker = new Worker(
   async (job) => {
     const startTime = Date.now();
     logWhatsApp('[WHATSAPP_QUEUE]', { messageId: job.id }, `Job started: Queue=whatsapp-webhook-queue, jobId=${job.id}`);
+
+    const redis = getRedisClient();
+    if (redis && job.attemptsMade > 0) {
+      await redis.incr("whatsapp:metrics:queue:retries");
+    }
 
     try {
       const result = await whatsappWebhookService.processPayload(job.data);
@@ -53,4 +58,18 @@ export const webhookWorker = new Worker(
 // Diagnostic Listener for Redis connection errors
 webhookWorker.on("error", (err) => {
   logWhatsApp('[WHATSAPP_QUEUE]', {}, `Redis Connection Error in Webhook Worker: ${err.message}`, 'error');
+});
+
+webhookWorker.on("completed", async (_job) => {
+  const redis = getRedisClient();
+  if (redis) {
+    await redis.incr("whatsapp:metrics:queue:processed");
+  }
+});
+
+webhookWorker.on("failed", async (_job, _err) => {
+  const redis = getRedisClient();
+  if (redis) {
+    await redis.incr("whatsapp:metrics:queue:failed");
+  }
 });

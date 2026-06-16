@@ -3,6 +3,7 @@ import jwt from "jsonwebtoken";
 import env from "../config/env.js";
 import logger from "../utils/logger.js";
 import prisma from "./prisma.js";
+import getRedisClient from "./redis.js";
 
 let ioInstance = null;
 
@@ -20,13 +21,31 @@ export function initSocketServer(server) {
     tenantNamespace.use(async (socket, next) => {
       try {
         const cookies = socket.handshake.headers.cookie;
-        const token = cookies
+        let token = cookies
           ?.split("; ")
           ?.find((row) => row.startsWith("accessToken="))
           ?.split("=")[1];
   
         if (!token) {
+          // Fallback 1: handshake auth
+          token = socket.handshake.auth?.token;
+        }
+
+        if (!token) {
+          // Fallback 2: Authorization header
+          const authHeader = socket.handshake.headers.authorization;
+          if (authHeader && authHeader.startsWith("Bearer ")) {
+            token = authHeader.substring(7).trim();
+          }
+        }
+
+        const redis = getRedisClient();
+
+        if (!token) {
           logger.warn("[WHATSAPP_SOCKET] Unauthorized socket attempt: Access token missing.");
+          if (redis) {
+            await redis.incr("whatsapp:metrics:socket:failed");
+          }
           return next(new Error("Authentication error: Access token missing."));
         }
   
@@ -42,30 +61,49 @@ export function initSocketServer(server) {
             tokenTenantId: decoded.tenantId,
             namespaceTenantId,
           });
+          if (redis) {
+            await redis.incr("whatsapp:metrics:socket:failed");
+          }
           return next(new Error("Authentication error: Tenant workspace mismatch."));
         }
   
         // Query database user to verify access
         const user = await prisma.user.findFirst({
           where: {
-            id: decoded.id,
+            id: decoded.id || decoded.sub, // Support sub standard too
             tenantId: decoded.tenantId,
           },
         });
   
         if (!user) {
           logger.warn("[WHATSAPP_SOCKET] Unauthorized socket attempt: User record missing.", {
-            userId: decoded.id,
+            userId: decoded.id || decoded.sub,
             tenantId: decoded.tenantId,
           });
+          if (redis) {
+            await redis.incr("whatsapp:metrics:socket:failed");
+          }
           return next(new Error("Authentication error: User record missing."));
         }
   
         socket.user = { id: user.id, role: user.role };
         socket.tenantId = decoded.tenantId;
+
+        // Record metrics
+        if (redis) {
+          await redis.incr("whatsapp:metrics:socket:authenticated");
+          const connTime = new Date().toISOString();
+          await redis.set("whatsapp:socket:last_connection_at", connTime);
+          await redis.set(`whatsapp:socket:last_connection_at:${socket.tenantId}`, connTime);
+        }
+
         next();
       } catch (err) {
         logger.error("[WHATSAPP_SOCKET] Handshake authorization failed", { error: err.message });
+        const redis = getRedisClient();
+        if (redis) {
+          await redis.incr("whatsapp:metrics:socket:failed");
+        }
         next(new Error("Unauthorized connection."));
       }
     });
