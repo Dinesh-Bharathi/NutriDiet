@@ -96,7 +96,7 @@ app.use(cookieParser());
 app.use(compression());
 
 // ─── Sanitisation & Security ──────────────────────────────────────────────────
-app.use(mongoSanitize()); // Prevent NoSQL injection via $-prefixed keys
+app.use(mongoSanitize({ allowDots: true })); // Prevent NoSQL injection via $-prefixed keys
 app.use(xssClean()); // Sanitise user input against XSS
 app.use(hpp()); // Prevent HTTP parameter pollution
 
