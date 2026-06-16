@@ -18,6 +18,46 @@ import logger from '../../utils/logger.js';
 import { getRedisClient } from '../../lib/redis.js';
 import { logWhatsApp, logWhatsAppVerbose } from './whatsapp-logger.js';
 
+export function generatePreviewText(type, body, messageData = {}) {
+  switch (type) {
+    case 'TEXT':
+      return body || '';
+    case 'IMAGE':
+      return `📷 Photo${body ? ': ' + body : ''}`;
+    case 'VIDEO':
+      return `🎥 Video${body ? ': ' + body : ''}`;
+    case 'AUDIO':
+      return `🎤 Audio File`;
+    case 'VOICE':
+      return `🎤 Voice Note`;
+    case 'DOCUMENT': {
+      const docName = messageData.document?.filename || messageData.mediaFileName || body;
+      return `📄 Document${docName ? ': ' + docName : ''}`;
+    }
+    case 'LOCATION': {
+      const locName = messageData.location?.name || messageData.locationName || body;
+      return `📍 Shared Location${locName ? ': ' + locName : ''}`;
+    }
+    case 'CONTACT': {
+      const contactName = messageData.contacts?.[0]?.name?.formatted_name || messageData.contactName || 'Contact';
+      return `👤 Contact: ${contactName}`;
+    }
+    case 'STICKER':
+      return `🎨 Sticker`;
+    case 'REACTION':
+      return `Reaction`;
+    case 'INTERACTIVE': {
+      const interactive = messageData.interactive || {};
+      const optionTitle = interactive.button_reply?.title || interactive.list_reply?.title || 'Option';
+      return `🔘 ${optionTitle}`;
+    }
+    case 'SYSTEM':
+      return body || 'System event';
+    default:
+      return body || `[${type}]`;
+  }
+}
+
 
 /**
  * Generate SHA-256 fingerprint for credentials to prevent duplicate checks.
@@ -380,6 +420,7 @@ export const whatsappService = {
             secureUrl: true,
           },
         },
+        reactions: true,
       },
     };
 
@@ -486,32 +527,76 @@ export const whatsappService = {
     let formattedPayload = null;
     let mimeType = null;
     let size = null;
+    let mediaUrl = payload.mediaUrl || null;
+    let mediaFileName = payload.mediaFileName || null;
+    let storageFileId = null;
+    let previewText = '';
+
+    // Reply context lookup
+    let replyToMessageId = null;
+    let replyToMetaMessageId = null;
+    let replyPreviewText = null;
+
+    if (payload.replyToMessageId) {
+      const replyMsg = await prisma.whatsAppMessage.findFirst({
+        where: { id: payload.replyToMessageId, tenantId },
+      });
+      if (replyMsg) {
+        replyToMessageId = replyMsg.id;
+        replyToMetaMessageId = replyMsg.metaMessageId;
+        replyPreviewText = replyMsg.previewText || replyMsg.body || '';
+      }
+    }
 
     if (payload.type === 'TEXT') {
-      formattedPayload = metaMessageFormatter.text(client.phone, payload.body);
+      formattedPayload = metaMessageFormatter.text(client.phone, payload.body, replyToMetaMessageId);
+      previewText = generatePreviewText('TEXT', payload.body);
     } else if (payload.type === 'TEMPLATE') {
       formattedPayload = metaMessageFormatter.template(
         client.phone,
         payload.templateName,
         payload.templateLanguage || 'en_US',
-        payload.components
+        payload.components,
+        replyToMetaMessageId
       );
-    } else if (payload.type === 'MEDIA') {
-      const assetId = Array.isArray(payload.attachmentIds) ? payload.attachmentIds[0] : payload.attachmentId;
-      const asset = await prisma.fileAsset.findFirst({
-        where: { id: assetId, tenantId },
-      });
-      if (!asset) {
-        throw ApiError.notFound('Attachment file asset not found');
+      previewText = generatePreviewText('TEMPLATE', payload.templateName);
+    } else if (payload.type === 'LOCATION') {
+      formattedPayload = metaMessageFormatter.location(
+        client.phone,
+        payload.locationLatitude,
+        payload.locationLongitude,
+        payload.locationName,
+        payload.locationAddress,
+        replyToMetaMessageId
+      );
+      previewText = generatePreviewText('LOCATION', payload.locationName || payload.body);
+    } else if (['IMAGE', 'VIDEO', 'AUDIO', 'DOCUMENT'].includes(payload.type)) {
+      const assetId = Array.isArray(payload.attachmentIds) ? payload.attachmentIds[0] : (payload.attachmentId || null);
+      let asset = null;
+      if (assetId) {
+        asset = await prisma.fileAsset.findFirst({
+          where: { id: assetId, tenantId },
+        });
+        if (!asset) {
+          throw ApiError.notFound('Attachment file asset not found');
+        }
+        mimeType = asset.mimeType;
+        size = asset.fileSize;
+        mediaUrl = asset.secureUrl || asset.url;
+        mediaFileName = asset.fileName || asset.originalName;
+        storageFileId = asset.id;
       }
-      mimeType = asset.mimeType;
-      size = asset.fileSize;
+
+      const mediaType = payload.type;
       formattedPayload = metaMessageFormatter.media(
         client.phone,
-        payload.mediaType || 'DOCUMENT',
-        asset.secureUrl || asset.url,
-        asset.fileName
+        mediaType,
+        mediaUrl,
+        payload.caption || payload.body,
+        mediaFileName,
+        replyToMetaMessageId
       );
+      previewText = generatePreviewText(mediaType, payload.caption || payload.body || mediaFileName);
     }
 
     // Persist message in QUEUED state
@@ -520,13 +605,24 @@ export const whatsappService = {
         tenantId,
         conversationId,
         direction: 'OUTBOUND',
-        type: payload.type === 'MEDIA' ? (payload.mediaType || 'DOCUMENT') : payload.type,
+        type: payload.type,
         status: 'QUEUED',
         senderType: 'USER',
         source: payload.source || 'MANUAL',
-        body: payload.body || payload.templateName || null,
+        body: payload.body || payload.caption || payload.templateName || null,
         mediaMimeType: mimeType,
         mediaSize: size,
+        mediaUrl,
+        mediaFileName,
+        storageFileId,
+        replyToMessageId,
+        replyToMetaMessageId,
+        replyPreviewText,
+        locationLatitude: payload.locationLatitude ? parseFloat(payload.locationLatitude) : null,
+        locationLongitude: payload.locationLongitude ? parseFloat(payload.locationLongitude) : null,
+        locationName: payload.locationName,
+        locationAddress: payload.locationAddress,
+        previewText,
         senderUserId: user.id,
         senderRole: user.role,
         senderName: `${user.firstName} ${user.lastName}`,
@@ -543,14 +639,10 @@ export const whatsappService = {
     logWhatsApp('[WHATSAPP_SEND]', { correlationId, messageId: createdMsg.id, tenantId }, `Message Send Request: conversationId=${conversationId}, clientId=${conversation.clientId}, recipient=${client.phone}, type=${payload.type}, senderUser=${user.id}`);
 
     // Link attachments if provided
-    if (payload.attachmentIds && payload.attachmentIds.length > 0) {
-      await prisma.fileAsset.updateMany({
-        where: { id: { in: payload.attachmentIds }, tenantId },
-        data: { whatsAppMessageId: createdMsg.id },
-      });
-    } else if (payload.attachmentId) {
+    const assetId = Array.isArray(payload.attachmentIds) ? payload.attachmentIds[0] : (payload.attachmentId || null);
+    if (assetId) {
       await prisma.fileAsset.update({
-        where: { id: payload.attachmentId },
+        where: { id: assetId },
         data: { whatsAppMessageId: createdMsg.id },
       });
     }
@@ -577,16 +669,18 @@ export const whatsappService = {
           metaMessageId: wamid,
           sentAt: new Date(),
         },
+        include: {
+          reactions: true,
+        }
       });
 
       logWhatsApp('[WHATSAPP_SEND]', { correlationId, messageId: createdMsg.id, metaMessageId: wamid, tenantId }, `Message Status Transition: QUEUED -> SENT`);
 
-      const summaryText = payload.body ? payload.body.slice(0, 499) : `[${payload.type}]`;
       await prisma.whatsAppConversation.update({
         where: { id: conversationId },
         data: {
           lastMessageId: updated.id,
-          lastMessageText: summaryText,
+          lastMessageText: previewText.slice(0, 499),
           lastMessageAt: new Date(),
           lastOutboundAt: new Date(),
           lastPractitionerMessageAt: new Date(),
@@ -633,6 +727,9 @@ export const whatsappService = {
           errorText: cleanErrorMsg,
           lastErrorCode: metaCode,
         },
+        include: {
+          reactions: true,
+        }
       });
 
       logWhatsApp('[WHATSAPP_SEND]', { correlationId, messageId: createdMsg.id, tenantId }, `Message Status Transition: QUEUED -> FAILED`);
@@ -836,6 +933,25 @@ export const whatsappService = {
       body: model.body,
       mediaMimeType: model.mediaMimeType,
       mediaSize: model.mediaSize,
+      mediaUrl: model.mediaUrl,
+      mediaFileName: model.mediaFileName,
+      mediaWidth: model.mediaWidth,
+      mediaHeight: model.mediaHeight,
+      mediaDurationSeconds: model.mediaDurationSeconds,
+      storageFileId: model.storageFileId,
+      replyToMessageId: model.replyToMessageId,
+      replyToMetaMessageId: model.replyToMetaMessageId,
+      replyPreviewText: model.replyPreviewText,
+      locationLatitude: model.locationLatitude,
+      locationLongitude: model.locationLongitude,
+      locationName: model.locationName,
+      locationAddress: model.locationAddress,
+      contactName: model.contactName,
+      contactPhones: model.contactPhones,
+      contactPayload: model.contactPayload,
+      interactivePayload: model.interactivePayload,
+      previewText: model.previewText,
+      reactions: model.reactions || [],
       senderUserId: model.senderUserId,
       senderRole: model.senderRole,
       senderName: model.senderName,

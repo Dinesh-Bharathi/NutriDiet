@@ -2,7 +2,7 @@ import crypto from 'crypto';
 import env from '../../config/env.js';
 import logger from '../../utils/logger.js';
 import { whatsappService, AppError } from './whatsapp.service.js';
-import { whatsappConnectionUpsertSchema } from './whatsapp.validation.js';
+import { whatsappConnectionUpsertSchema, whatsappMessageSendSchema } from './whatsapp.validation.js';
 import { sendSuccess } from '../../utils/ApiResponse.js';
 import { HTTP_STATUS } from '../../config/constants.js';
 import prisma from '../../lib/prisma.js';
@@ -125,12 +125,14 @@ export const whatsappController = {
     const userId = req.user.userId || req.user.id;
     const role = req.user.role;
     
+    const validatedData = whatsappMessageSendSchema.parse(req.body);
+    
     const message = await whatsappService.sendMessage(
       tenantId,
       userId,
       role,
       conversationId,
-      req.body
+      validatedData
     );
     
     return sendSuccess(

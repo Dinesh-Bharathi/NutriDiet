@@ -1421,6 +1421,7 @@ enum FileEntityType {
   APPOINTMENT
   INVOICE
   WHATSAPP_MESSAGE
+  WHATSAPP
   OTHER
 }
 
@@ -1571,6 +1572,10 @@ enum WhatsAppMessageType {
   VIDEO
   LOCATION
   CONTACT
+  VOICE
+  STICKER
+  REACTION
+  SYSTEM
 }
 
 enum WhatsAppMessageStatus {
@@ -1635,6 +1640,25 @@ model WhatsAppMessage {
   mediaMimeType     String?                  @db.VarChar(100)
   mediaSize         Int?
   
+  mediaUrl                String?                  @db.Text
+  mediaFileName           String?                  @db.VarChar(255)
+  mediaWidth              Int?
+  mediaHeight             Int?
+  mediaDurationSeconds    Int?
+  storageFileId           String?
+  replyToMessageId        String?
+  replyToMetaMessageId    String?
+  replyPreviewText        String?                  @db.Text
+  locationLatitude        Float?
+  locationLongitude       Float?
+  locationName            String?                  @db.VarChar(255)
+  locationAddress         String?                  @db.Text
+  contactName             String?                  @db.VarChar(255)
+  contactPhones           Json?
+  contactPayload          Json?
+  interactivePayload      Json?
+  previewText             String?                  @db.VarChar(500)
+  
   senderUserId      String?
   senderRole        Role?
   senderName        String?                  @db.VarChar(100)
@@ -1659,6 +1683,7 @@ model WhatsAppMessage {
   conversation      WhatsAppConversation     @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   senderUser        User?                    @relation(fields: [senderUserId], references: [id], onDelete: SetNull)
   attachments       FileAsset[]
+  reactions         WhatsAppReaction[]
 
   @@index([tenantId])
   @@index([conversationId])
@@ -1666,6 +1691,25 @@ model WhatsAppMessage {
   @@index([senderUserId])
   @@index([createdAt])
   @@map("whatsapp_messages")
+}
+
+model WhatsAppReaction {
+  id              String   @id @default(cuid())
+  tenantId        String
+  messageId       String
+  metaMessageId   String?  @db.VarChar(100)
+  senderPhone     String   @db.VarChar(30)
+  senderName      String?  @db.VarChar(100)
+  emoji           String   @db.VarChar(50)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  message         WhatsAppMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, senderPhone])
+  @@index([tenantId])
+  @@index([messageId])
+  @@map("whatsapp_reactions")
 }
 
 

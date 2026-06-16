@@ -38,6 +38,11 @@ async function validateEntityOwnership(tenantId, entityType, entityId) {
       entityExists = !!dietPlan;
       break;
     }
+    case FILE_ENTITY_TYPE.WHATSAPP: {
+      const conversation = await prisma.whatsAppConversation.findFirst({ where: { id: entityId, tenantId } });
+      entityExists = !!conversation;
+      break;
+    }
     // For future modules (Package, Program, etc.), we bypass strict db check if tables don't exist yet, 
     // or we throw an error if they shouldn't be used yet. For now, we allow them to pass to support Phase 10.
     default:
@@ -53,10 +58,17 @@ async function validateEntityOwnership(tenantId, entityType, entityId) {
 /**
  * Determine the resource type based on mimetype.
  */
-function getResourceTypeFromMime(mimeType) {
+function getResourceTypeFromMime(mimeType, entityType = null) {
   if (ALLOWED_MIME_TYPES.image.includes(mimeType)) return "image";
   if (ALLOWED_MIME_TYPES.video.includes(mimeType)) return "video";
   if (ALLOWED_MIME_TYPES.document.includes(mimeType)) return "raw";
+  
+  if (entityType === FILE_ENTITY_TYPE.WHATSAPP) {
+    if (mimeType.startsWith("image/")) return "image";
+    if (mimeType.startsWith("video/")) return "video";
+    if (mimeType.startsWith("audio/")) return "raw";
+    return "raw";
+  }
   return null;
 }
 
@@ -67,7 +79,7 @@ export async function uploadAsset(tenantId, userId, file, entityType, entityId, 
   if (!file) throw new ApiError("No file provided", 400);
 
   // 1. Validate Mime Type & Determine Resource Type
-  const resourceType = getResourceTypeFromMime(file.mimetype);
+  const resourceType = getResourceTypeFromMime(file.mimetype, entityType);
   if (!resourceType) {
     // Clean up temp file
     fs.unlink(file.path, () => {});

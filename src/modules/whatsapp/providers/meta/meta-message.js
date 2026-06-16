@@ -2,8 +2,8 @@ export const metaMessageFormatter = {
   /**
    * Format a plain text message payload.
    */
-  text(toPhone, body) {
-    return {
+  text(toPhone, body, replyToMetaMessageId = null) {
+    const payload = {
       messaging_product: "whatsapp",
       recipient_type: "individual",
       to: toPhone,
@@ -13,12 +13,16 @@ export const metaMessageFormatter = {
         body: body,
       },
     };
+    if (replyToMetaMessageId) {
+      payload.context = { message_id: replyToMetaMessageId };
+    }
+    return payload;
   },
 
   /**
    * Format a template message payload.
    */
-  template(toPhone, templateName, languageCode = "en_US", components = null) {
+  template(toPhone, templateName, languageCode = "en_US", components = null, replyToMetaMessageId = null) {
     const templatePayload = {
       name: templateName,
       language: {
@@ -30,35 +34,75 @@ export const metaMessageFormatter = {
       templatePayload.components = components;
     }
 
-    return {
+    const payload = {
       messaging_product: "whatsapp",
       recipient_type: "individual",
       to: toPhone,
       type: "template",
       template: templatePayload,
     };
+
+    if (replyToMetaMessageId) {
+      payload.context = { message_id: replyToMetaMessageId };
+    }
+    return payload;
   },
 
   /**
    * Format a media attachment payload (image, document, audio, video).
    */
-  media(toPhone, mediaType, mediaUrl, fileName = null) {
-    const type = mediaType.toLowerCase(); // 'image' | 'document' | 'audio' | 'video'
+  media(toPhone, mediaType, mediaUrl, caption = null, fileName = null, replyToMetaMessageId = null) {
+    const type = mediaType.toLowerCase(); // 'image' | 'document' | 'audio' | 'video' | 'voice'
     const mediaObject = {
       link: mediaUrl,
     };
+
+    if (caption && ['image', 'video', 'document'].includes(type)) {
+      mediaObject.caption = caption;
+    }
 
     if (type === "document" && fileName) {
       mediaObject.filename = fileName;
     }
 
-    return {
+    const payload = {
       messaging_product: "whatsapp",
       recipient_type: "individual",
       to: toPhone,
-      type: type,
-      [type]: mediaObject,
+      type: type === 'voice' ? 'audio' : type,
+      [type === 'voice' ? 'audio' : type]: mediaObject,
     };
+
+    if (replyToMetaMessageId) {
+      payload.context = { message_id: replyToMetaMessageId };
+    }
+    return payload;
+  },
+
+  /**
+   * Format a location message payload.
+   */
+  location(toPhone, latitude, longitude, name = null, address = null, replyToMetaMessageId = null) {
+    const locationObject = {
+      latitude: parseFloat(latitude),
+      longitude: parseFloat(longitude),
+    };
+
+    if (name) locationObject.name = name;
+    if (address) locationObject.address = address;
+
+    const payload = {
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to: toPhone,
+      type: "location",
+      location: locationObject,
+    };
+
+    if (replyToMetaMessageId) {
+      payload.context = { message_id: replyToMetaMessageId };
+    }
+    return payload;
   },
 
   /**

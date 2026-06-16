@@ -3,6 +3,9 @@ import prisma from "../../lib/prisma.js";
 import { getRedisClient } from "../../lib/redis.js";
 import { emitTenantEvent } from "../../lib/socket.js";
 import { logWhatsApp, logWhatsAppVerbose } from "./whatsapp-logger.js";
+import { decrypt } from "../../utils/encryption.js";
+import { mediaService } from "./services/media.service.js";
+import { whatsappService, generatePreviewText } from "./whatsapp.service.js";
 
 export const whatsappWebhookService = {
   /**
@@ -316,24 +319,213 @@ export const whatsappWebhookService = {
             // Map message types and handle optimizations
             const rawType = String(messageData.type).toUpperCase();
             let mappedType = "TEXT";
-            if (["TEXT", "IMAGE", "DOCUMENT", "AUDIO", "VIDEO", "LOCATION", "CONTACT"].includes(rawType)) {
+            if (["TEXT", "IMAGE", "DOCUMENT", "AUDIO", "VIDEO", "LOCATION", "CONTACT", "REACTION", "INTERACTIVE", "SYSTEM"].includes(rawType)) {
               mappedType = rawType;
             }
 
-            let bodyContent = messageData.text?.body || null;
+            if (rawType === "AUDIO" && messageData.audio?.voice) {
+              mappedType = "VOICE";
+            }
+            if (rawType === "STICKER") {
+              mappedType = "STICKER";
+            }
+
+            let bodyContent = null;
             let mimeType = null;
             let fileSize = null;
+            let mediaUrl = null;
+            let mediaFileName = null;
+            let storageFileId = null;
+            let mediaWidth = null;
+            let mediaHeight = null;
+            let mediaDurationSeconds = null;
+            let locationLatitude = null;
+            let locationLongitude = null;
+            let locationName = null;
+            let locationAddress = null;
+            let contactName = null;
+            let contactPhones = null;
+            let contactPayload = null;
+            let interactivePayload = null;
 
-            // Extract media metadata
-            if (mappedType !== "TEXT") {
-              const mediaKey = messageData.type; // e.g. 'image', 'document'
-              const mediaData = messageData[mediaKey];
-              if (mediaData) {
-                mimeType = mediaData.mime_type || null;
-                bodyContent = mediaData.caption || mediaData.filename || null;
-                fileSize = mediaData.sha256 ? 0 : null; // Size is not directly in message block, default or parse
+            // 1. Text Type
+            if (mappedType === "TEXT") {
+              bodyContent = messageData.text?.body || null;
+            }
+            
+            // 2. Interactive Type
+            else if (mappedType === "INTERACTIVE") {
+              interactivePayload = messageData.interactive;
+              const type = messageData.interactive?.type;
+              if (type === "button_reply") {
+                bodyContent = messageData.interactive?.button_reply?.title || null;
+              } else if (type === "list_reply") {
+                bodyContent = messageData.interactive?.list_reply?.title || null;
               }
             }
+
+            // 3. Location Type
+            else if (mappedType === "LOCATION") {
+              locationLatitude = messageData.location?.latitude || null;
+              locationLongitude = messageData.location?.longitude || null;
+              locationName = messageData.location?.name || null;
+              locationAddress = messageData.location?.address || null;
+              bodyContent = locationName || locationAddress || "Location";
+            }
+
+            // 4. Contacts Type
+            else if (mappedType === "CONTACT") {
+              contactPayload = messageData.contacts;
+              const primaryContact = messageData.contacts?.[0];
+              if (primaryContact) {
+                contactName = primaryContact.name?.formatted_name || primaryContact.name?.first_name || 'Contact';
+                contactPhones = primaryContact.phones?.map(p => p.phone || p.wa_id).filter(Boolean) || [];
+              }
+              bodyContent = contactName || "Contact Details";
+            }
+
+            // 5. Media Types
+            else if (["IMAGE", "VIDEO", "AUDIO", "VOICE", "DOCUMENT", "STICKER"].includes(mappedType)) {
+              const mediaKey = messageData.type;
+              const mediaData = messageData[mediaKey];
+              if (mediaData && mediaData.id) {
+                const mediaId = mediaData.id;
+                mimeType = mediaData.mime_type || null;
+                bodyContent = mediaData.caption || null;
+                mediaFileName = mediaData.filename || null;
+                mediaWidth = mediaData.width ? parseInt(mediaData.width, 10) : null;
+                mediaHeight = mediaData.height ? parseInt(mediaData.height, 10) : null;
+                mediaDurationSeconds = mediaData.duration ? parseInt(mediaData.duration, 10) : null;
+                
+                try {
+                  const decryptedToken = decrypt(connection.accessToken);
+                  const fileAsset = await mediaService.downloadAndStoreMedia(
+                    tenantId,
+                    mediaId,
+                    decryptedToken,
+                    conversation.id
+                  );
+                  
+                  if (fileAsset) {
+                    storageFileId = fileAsset.id;
+                    mediaUrl = fileAsset.secureUrl || fileAsset.url;
+                    fileSize = fileAsset.fileSize;
+                    if (!mediaFileName) {
+                      mediaFileName = fileAsset.originalName || fileAsset.fileName;
+                    }
+                  }
+                } catch (mediaErr) {
+                  logWhatsApp('[WHATSAPP_WEBHOOK]', { tenantId }, `Failed to download/upload media attachment for mediaId=${mediaId}: ${mediaErr.message}`, 'error');
+                }
+              }
+            }
+
+            // 6. Reactions
+            else if (mappedType === "REACTION") {
+              const reactionData = messageData.reaction;
+              if (reactionData) {
+                const reactionEmoji = reactionData.emoji || null;
+                const targetMetaId = reactionData.message_id;
+                const senderPhone = fromPhone;
+                
+                bodyContent = reactionEmoji || "Removed reaction";
+                
+                const targetMsg = await prisma.whatsAppMessage.findFirst({
+                  where: { metaMessageId: targetMetaId, tenantId }
+                });
+                
+                if (targetMsg) {
+                  if (reactionEmoji) {
+                    await prisma.whatsappReaction.upsert({
+                      where: {
+                        messageId_senderPhone: {
+                          messageId: targetMsg.id,
+                          senderPhone,
+                        },
+                      },
+                      update: {
+                        emoji: reactionEmoji,
+                        metaMessageId: wamid,
+                      },
+                      create: {
+                        tenantId,
+                        messageId: targetMsg.id,
+                        metaMessageId: wamid,
+                        senderPhone,
+                        senderName: messageData.senderName || `${client.firstName} ${client.lastName}`,
+                        emoji: reactionEmoji,
+                      },
+                    });
+                  } else {
+                    await prisma.whatsappReaction.deleteMany({
+                      where: {
+                        messageId: targetMsg.id,
+                        senderPhone,
+                      },
+                    });
+                  }
+                  
+                  const allReactions = await prisma.whatsappReaction.findMany({
+                    where: { messageId: targetMsg.id },
+                    select: { senderPhone: true, emoji: true, senderName: true }
+                  });
+                  
+                  emitTenantEvent(tenantId, 'whatsapp:message_reaction', {
+                    targetMessageId: targetMsg.id,
+                    metaMessageId: targetMsg.metaMessageId,
+                    reactions: allReactions,
+                  });
+                }
+              }
+            }
+
+            // Deletions check
+            const isDeletion = messageData.type === 'unsupported' || (messageData.errors && messageData.errors.some(e => e.code === 131051 || String(e.message).toLowerCase().includes('deleted')));
+            if (isDeletion) {
+              const existingMsg = await prisma.whatsAppMessage.findFirst({
+                where: { metaMessageId: wamid, tenantId }
+              });
+              if (existingMsg) {
+                await prisma.whatsAppMessage.update({
+                  where: { id: existingMsg.id },
+                  data: {
+                    deletedAt: timestamp,
+                  }
+                });
+                
+                emitTenantEvent(tenantId, "whatsapp:message_deleted", {
+                  id: existingMsg.id,
+                  metaMessageId: existingMsg.metaMessageId,
+                  deletedAt: timestamp,
+                });
+                
+                continue;
+              }
+            }
+
+            // Resolve reply context
+            let replyToMessageId = null;
+            let replyToMetaMessageId = null;
+            let replyPreviewText = null;
+
+            if (messageData.context) {
+              replyToMetaMessageId = messageData.context.id;
+              const repliedMsg = await prisma.whatsAppMessage.findFirst({
+                where: { metaMessageId: replyToMetaMessageId, tenantId }
+              });
+              if (repliedMsg) {
+                replyToMessageId = repliedMsg.id;
+                replyPreviewText = repliedMsg.previewText || repliedMsg.body || '';
+              }
+            }
+
+            // Generate server-side previewText
+            const previewText = generatePreviewText(mappedType, bodyContent, {
+              document: { filename: mediaFileName },
+              location: { name: locationName },
+              contacts: messageData.contacts,
+              interactive: messageData.interactive,
+            });
 
             const createFields = {
               tenantId,
@@ -347,20 +539,40 @@ export const whatsappWebhookService = {
               body: bodyContent,
               mediaMimeType: mimeType,
               mediaSize: fileSize,
+              mediaUrl,
+              mediaFileName,
+              storageFileId,
+              mediaWidth,
+              mediaHeight,
+              mediaDurationSeconds,
+              locationLatitude: locationLatitude ? parseFloat(locationLatitude) : null,
+              locationLongitude: locationLongitude ? parseFloat(locationLongitude) : null,
+              locationName,
+              locationAddress,
+              contactName,
+              contactPhones,
+              contactPayload,
+              interactivePayload,
+              replyToMessageId,
+              replyToMetaMessageId,
+              replyPreviewText,
+              previewText,
               senderPhone: fromPhone,
-              senderName: `${client.firstName} ${client.lastName}`, // Keep client name standard
+              senderName: `${client.firstName} ${client.lastName}`,
               deliveredAt: timestamp,
               createdAt: timestamp,
             };
 
-            // Check if there is an existing outbound stub created out-of-order
             const savedMessage = await prisma.whatsAppMessage.upsert({
               where: { metaMessageId: wamid },
               update: {
                 ...createFields,
-                direction: "INBOUND", // correct default in case it was created as outbound stub
+                direction: "INBOUND",
               },
               create: createFields,
+              include: {
+                reactions: true,
+              }
             });
 
             logWhatsApp('[WHATSAPP_WEBHOOK] Message persisted', { tenantId, messageId: savedMessage.id });
@@ -369,13 +581,12 @@ export const whatsappWebhookService = {
               await redis.set(`whatsapp:correlation:local:${savedMessage.id}`, correlationId, 'EX', 604800);
             }
 
-            // Update conversation last message metadata
-            const summaryText = mappedType === "TEXT" ? bodyContent : `[${mappedType}] ${bodyContent || ""}`;
+            // Update conversation last messageDetails
             const updatedConv = await prisma.whatsAppConversation.update({
               where: { id: conversation.id },
               data: {
                 lastMessageId: savedMessage.id,
-                lastMessageText: summaryText ? summaryText.slice(0, 499) : `[${mappedType}]`,
+                lastMessageText: previewText.slice(0, 499),
                 lastMessageAt: timestamp,
               },
               include: {
@@ -390,15 +601,15 @@ export const whatsappWebhookService = {
               },
             });
 
-            // Fetch receipt history (empty for incoming, but needed for schema consistency)
             const receiptHistory = [];
 
-            // Broadcast real-time Socket notifications
-            emitTenantEvent(tenantId, "whatsapp:message_new", {
-              ...this.toMessageResponseDTO ? this.toMessageResponseDTO(savedMessage) : savedMessage,
+            const messageDto = {
+              ...whatsappService.toMessageResponseDTO(savedMessage),
               correlationId,
               receiptHistory,
-            });
+            };
+
+            emitTenantEvent(tenantId, "whatsapp:message_new", messageDto);
 
             logWhatsApp('[WHATSAPP_SOCKET] Inbound message broadcasted', { tenantId, messageId: savedMessage.id });
             emitTenantEvent(tenantId, "whatsapp:conversation_update", updatedConv);
