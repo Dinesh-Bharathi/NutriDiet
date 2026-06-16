@@ -300,8 +300,8 @@ export const dietPlanDocumentBuilder = {
     const compileContext = {
       // Tenant Details
       clinic_name: tenant.name,
-      clinic_email: tenant.practiceEmail || tenant.email || "",
-      clinic_phone: tenant.practicePhone || tenant.phone || "",
+      clinic_email: tenant.practiceEmail || "",
+      clinic_phone: tenant.practicePhone || "",
       clinic_address: clinicAddress,
 
       // Patient/Client Details

@@ -2,6 +2,7 @@
 import { z } from 'zod';
 import countriesAndTimezones from 'countries-and-timezones';
 import currencyCodes from 'currency-codes';
+import { parsePhoneNumberFromString } from 'libphonenumber-js';
 
 // Load timezone lookup for validation
 const rawTimezones = countriesAndTimezones.getAllTimezones();
@@ -11,6 +12,19 @@ const validTimezoneNames = new Set(Object.keys(rawTimezones));
 const validCurrencyCodes = new Set(currencyCodes.codes());
 
 export const tenantSettingsSchema = z.object({
+  name: z
+    .string()
+    .min(1, 'Practice name is required')
+    .optional(),
+
+  logoUrl: z
+    .string()
+    .url('Invalid logo URL')
+    .nullable()
+    .or(z.literal(''))
+    .transform((val) => (val === '' ? null : val))
+    .optional(),
+
   countryCode: z
     .string()
     .length(2, 'Country code must be a 2-character ISO code')
@@ -56,6 +70,13 @@ export const tenantSettingsSchema = z.object({
     .nullable()
     .or(z.literal(''))
     .transform((val) => (val === '' ? null : val))
+    .refine((val) => {
+      if (!val) return true;
+      const parsed = parsePhoneNumberFromString(val);
+      return parsed && parsed.isValid();
+    }, {
+      message: 'Invalid international phone number format (E.164 required)',
+    })
     .optional(),
 
   addressLine1: z

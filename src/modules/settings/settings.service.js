@@ -2,6 +2,8 @@
 import { createRequire } from 'module';
 import prisma from '../../lib/prisma.js';
 import ApiError from '../../utils/ApiError.js';
+import { getCountryCallingCode, getExampleNumber } from 'libphonenumber-js';
+import examples from 'libphonenumber-js/mobile/examples';
 
 const require = createRequire(import.meta.url);
 const countries = require('i18n-iso-countries');
@@ -30,10 +32,28 @@ function ensureLocalizationCache() {
 
   // 1. Countries
   const countryObj = countries.getNames('en', { select: 'official' });
-  const countriesList = Object.entries(countryObj).map(([code, name]) => ({
-    code,
-    name,
-  }));
+  const countriesList = [];
+  
+  for (const [code, name] of Object.entries(countryObj)) {
+    let dialCode = '';
+    let phoneExample = '';
+    try {
+      dialCode = `+${getCountryCallingCode(code)}`;
+      const example = getExampleNumber(code, examples);
+      if (example) {
+        phoneExample = example.formatNational();
+      }
+    } catch (err) {
+      // Ignore country codes not supported by libphonenumber-js
+    }
+    
+    countriesList.push({
+      code,
+      name,
+      dialCode,
+      phoneExample,
+    });
+  }
 
   // 2. Currencies
   const currenciesList = currencyCodes.data.map((item) => ({
@@ -75,6 +95,8 @@ export const settingsService = {
     const tenant = await prisma.tenant.findUnique({
       where: { id: tenantId },
       select: {
+        name: true,
+        logoUrl: true,
         countryCode: true,
         timezone: true,
         locale: true,
@@ -117,6 +139,8 @@ export const settingsService = {
     return prisma.tenant.update({
       where: { id: tenantId },
       data: {
+        name: data.name,
+        logoUrl: data.logoUrl,
         countryCode: data.countryCode,
         timezone: data.timezone,
         locale: data.locale,
@@ -132,6 +156,8 @@ export const settingsService = {
         postalCode: data.postalCode,
       },
       select: {
+        name: true,
+        logoUrl: true,
         countryCode: true,
         timezone: true,
         locale: true,

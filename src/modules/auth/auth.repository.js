@@ -3,6 +3,30 @@
 // No business logic here; pure Prisma interactions only.
 import prisma from '../../lib/prisma.js';
 
+const TENANT_SELECT = {
+  id: true,
+  name: true,
+  slug: true,
+  plan: true,
+  status: true,
+  themeId: true,
+  countryCode: true,
+  timezone: true,
+  locale: true,
+  currencyCode: true,
+  measurementSystem: true,
+  practiceEmail: true,
+  practicePhone: true,
+  logoUrl: true,
+  addressLine1: true,
+  addressLine2: true,
+  city: true,
+  state: true,
+  country: true,
+  postalCode: true,
+  updatedAt: true,
+};
+
 export const authRepository = {
   // ── Tenant ──────────────────────────────────────────────────────────────────
 
@@ -29,7 +53,7 @@ export const authRepository = {
       },
       include: {
         tenant: {
-          select: { id: true, name: true, slug: true, plan: true, status: true, themeId: true, countryCode: true, timezone: true, locale: true, currencyCode: true, measurementSystem: true, updatedAt: true },
+          select: TENANT_SELECT,
         },
       },
     });
@@ -44,7 +68,7 @@ export const authRepository = {
       where:   { id: userId, tenantId, deletedAt: null },
       include: {
         tenant: {
-          select: { id: true, name: true, slug: true, plan: true, status: true, themeId: true, countryCode: true, timezone: true, locale: true, currencyCode: true, measurementSystem: true, updatedAt: true },
+          select: TENANT_SELECT,
         },
       },
     });
@@ -71,11 +95,12 @@ export const authRepository = {
     return prisma.$transaction(async (tx) => {
       const tenant = await tx.tenant.create({
         data: {
-          name:   tenantData.name,
-          slug:   tenantData.slug,
-          plan:   'FREE',
-          status: 'TRIAL',
-          email:  tenantData.email,
+          name:          tenantData.name,
+          slug:          tenantData.slug,
+          plan:          'FREE',
+          status:        'TRIAL',
+          email:         tenantData.email,
+          practiceEmail: tenantData.email, // Standardize on practiceEmail init matching the new ownership model
         },
       });
 
@@ -92,7 +117,7 @@ export const authRepository = {
         },
         include: {
           tenant: {
-            select: { id: true, name: true, slug: true, plan: true, status: true, themeId: true, countryCode: true, timezone: true, locale: true, currencyCode: true, measurementSystem: true, updatedAt: true },
+            select: TENANT_SELECT,
           },
         },
       });

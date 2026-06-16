@@ -28,6 +28,7 @@ export function mapUserToProfile(user, tenant) {
           id:                t.id,
           name:              t.name,
           slug:              t.slug,
+          logoUrl:           t.logoUrl ?? null,
           countryCode:       t.countryCode ?? null,
           timezone:          t.timezone ?? 'UTC',
           locale:            t.locale ?? 'en-US',

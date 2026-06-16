@@ -105,8 +105,8 @@ export const pdfService = {
       tenant.postalCode
     ].filter(Boolean);
     const clinicAddress = addressParts.length > 0 ? addressParts.join(", ") : (tenant.address || "");
-    const clinicEmail = tenant.practiceEmail || tenant.email || "";
-    const clinicPhone = tenant.practicePhone || tenant.phone || "";
+    const clinicEmail = tenant.practiceEmail || "";
+    const clinicPhone = tenant.practicePhone || "";
 
     const now = new Date();
     const documentDate = new Intl.DateTimeFormat(tenantLocale, {
