@@ -14,6 +14,9 @@ import logger from "./utils/logger.js";
 import { disconnectDatabase } from "./config/database.js";
 import { disconnectRedis, connectRedis } from "./lib/redis.js";
 import { browserManager } from "./modules/pdf/puppeteer/browser-manager.js";
+import { initSocketServer } from "./lib/socket.js";
+// Import worker to register it on boot
+import "./modules/whatsapp/workers/webhook-worker.js";
 
 let server;
 
@@ -28,6 +31,8 @@ async function startServer() {
         url: `http://localhost:${env.PORT}/api/${env.API_VERSION}`,
       });
     });
+
+    initSocketServer(server);
 
     server.on("error", (err) => {
       if (err.code === "EADDRINUSE") {

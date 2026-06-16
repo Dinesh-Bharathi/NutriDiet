@@ -84,6 +84,9 @@ const env = Object.freeze({
   ENCRYPTION_KEY: require_env("ENCRYPTION_KEY"),
   META_GRAPH_API_BASE_URL: require_env("META_GRAPH_API_BASE_URL", "https://graph.facebook.com"),
   META_GRAPH_API_VERSION: require_env("META_GRAPH_API_VERSION", "v19.0"),
+  WHATSAPP_WEBHOOK_VERIFY_TOKEN: require_env("WHATSAPP_WEBHOOK_VERIFY_TOKEN", "mock_verify_token"),
+  WHATSAPP_APP_SECRET: require_env("WHATSAPP_APP_SECRET", "mock_app_secret"),
+  WHATSAPP_VERBOSE_LOGGING: process.env.WHATSAPP_VERBOSE_LOGGING === "true",
 
   // Cloudflare R2 ────────────────────────────────────────────────────────
   R2_ENDPOINT: require_env(

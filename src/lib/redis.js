@@ -8,10 +8,58 @@ import env from "../config/env.js";
 import logger from "../utils/logger.js";
 
 let redisClient = null;
-const redisEnabled = !!env.REDIS_URL;
+const redisEnabled = !!(env.REDIS_URL || env.REDIS_HOST);
 
 if (!redisEnabled) {
   logger.info("Redis disabled - REDIS_URL and REDIS_HOST not configured");
+}
+
+/**
+ * Resolves the Redis connection configuration object from env variables.
+ * Parses REDIS_URL if provided, otherwise uses REDIS_HOST/PORT.
+ * Merges password and DB selections securely.
+ *
+ * @returns {object}
+ */
+export function getRedisConnectionConfig() {
+  let config = {};
+
+  if (env.REDIS_URL) {
+    try {
+      const parsed = new URL(env.REDIS_URL);
+      config = {
+        host: parsed.hostname,
+        port: parsed.port ? parseInt(parsed.port, 10) : 6379,
+      };
+      if (parsed.password) {
+        config.password = decodeURIComponent(parsed.password);
+      }
+      if (parsed.pathname && parsed.pathname !== "/") {
+        config.db = parseInt(parsed.pathname.substring(1), 10);
+      }
+    } catch (err) {
+      logger.error("[Redis] Failed to parse REDIS_URL", { error: err.message });
+      config = {
+        host: env.REDIS_HOST || "localhost",
+        port: env.REDIS_PORT || 6379,
+      };
+    }
+  } else {
+    config = {
+      host: env.REDIS_HOST || "localhost",
+      port: env.REDIS_PORT || 6379,
+    };
+  }
+
+  // Priority override from separate env variables
+  if (env.REDIS_PASSWORD) {
+    config.password = env.REDIS_PASSWORD;
+  }
+  if (env.REDIS_DB !== undefined) {
+    config.db = env.REDIS_DB;
+  }
+
+  return config;
 }
 
 /**
@@ -27,6 +75,7 @@ export function getRedisClient() {
   }
 
   if (!redisClient) {
+    const connectionConfig = getRedisConnectionConfig();
     const redisOptions = {
       lazyConnect: true,
       connectTimeout: 5000, // 5s connection timeout
@@ -40,25 +89,10 @@ export function getRedisClient() {
         );
         return delay;
       },
+      ...connectionConfig,
     };
 
-    if (env.REDIS_PASSWORD) {
-      redisOptions.password = env.REDIS_PASSWORD;
-    }
-
-    if (env.REDIS_DB !== undefined) {
-      redisOptions.db = env.REDIS_DB;
-    }
-
-    if (env.REDIS_URL) {
-      redisClient = new Redis(env.REDIS_URL, redisOptions);
-    } else {
-      redisClient = new Redis({
-        host: env.REDIS_HOST,
-        port: env.REDIS_PORT,
-        ...redisOptions,
-      });
-    }
+    redisClient = new Redis(redisOptions);
 
     redisClient.on("connect", () => {
       logger.info("Redis client connected");

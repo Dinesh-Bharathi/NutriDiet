@@ -8,18 +8,44 @@ import asyncHandler from '../../utils/asyncHandler.js';
 
 const router = Router();
 
-// Require authentication and tenant resolution for all routes
+// ── Public Webhook Routes (No Authentication or Tenant Resolution Middlewares) ──
+router.get(
+  '/webhook',
+  asyncHandler(whatsappController.verifyWebhook)
+);
+
+router.post(
+  '/webhook',
+  asyncHandler(whatsappController.receiveWebhook)
+);
+
+// ── Require Authentication and Tenant Resolution for All Other Routes ──
 router.use(authenticate);
 router.use(resolveTenant);
 
-// GET connection (ASSISTANT or higher)
+// GET diagnostics health details (ASSISTANT or higher)
+router.get(
+  '/health',
+  requireMinRole(ROLES.ASSISTANT),
+  asyncHandler(whatsappController.getHealthDiagnostics)
+);
+
+// POST diagnostic test message (ADMIN or higher, dev-only)
+router.post(
+  '/test-message',
+  requireMinRole(ROLES.ADMIN),
+  asyncHandler(whatsappController.sendTestMessage)
+);
+
+
+// GET connection details (ASSISTANT or higher)
 router.get(
   '/connection',
   requireMinRole(ROLES.ASSISTANT),
   asyncHandler(whatsappController.getConnection)
 );
 
-// PUT connection (ADMIN or higher)
+// PUT connection details (ADMIN or higher)
 router.put(
   '/connection',
   requireMinRole(ROLES.ADMIN),
@@ -33,11 +59,74 @@ router.post(
   asyncHandler(whatsappController.disconnectConnection)
 );
 
-// POST validate (ADMIN or higher)
+// POST validate connection health (ADMIN or higher)
 router.post(
   '/validate',
   requireMinRole(ROLES.ADMIN),
   asyncHandler(whatsappController.validateConnection)
+);
+
+// GET conversations list (ASSISTANT or higher)
+router.get(
+  '/conversations',
+  requireMinRole(ROLES.ASSISTANT),
+  asyncHandler(whatsappController.getConversations)
+);
+
+// GET or create conversation by client ID (ASSISTANT or higher)
+router.get(
+  '/conversations/client/:clientId',
+  requireMinRole(ROLES.ASSISTANT),
+  asyncHandler(whatsappController.getOrCreateConversation)
+);
+
+// GET messages in a conversation (ASSISTANT or higher)
+router.get(
+  '/conversations/:id/messages',
+  requireMinRole(ROLES.ASSISTANT),
+  asyncHandler(whatsappController.getMessages)
+);
+
+// POST send message in a conversation (ASSISTANT or higher)
+router.post(
+  '/conversations/:id/messages',
+  requireMinRole(ROLES.ASSISTANT),
+  asyncHandler(whatsappController.sendMessage)
+);
+
+// POST mark conversation as read (ASSISTANT or higher)
+router.post(
+  '/conversations/:id/read',
+  requireMinRole(ROLES.ASSISTANT),
+  asyncHandler(whatsappController.markConversationAsRead)
+);
+
+// PUT archive conversation (DIETITIAN or higher)
+router.put(
+  '/conversations/:id/archive',
+  requireMinRole(ROLES.DIETITIAN),
+  asyncHandler(whatsappController.archiveConversation)
+);
+
+// PUT mute conversation (DIETITIAN or higher)
+router.put(
+  '/conversations/:id/mute',
+  requireMinRole(ROLES.DIETITIAN),
+  asyncHandler(whatsappController.muteConversation)
+);
+
+// PUT WhatsApp compliance opt-in (DIETITIAN or higher)
+router.put(
+  '/conversations/:id/opt-in',
+  requireMinRole(ROLES.DIETITIAN),
+  asyncHandler(whatsappController.optInClient)
+);
+
+// DELETE soft delete a message (DIETITIAN or higher)
+router.delete(
+  '/messages/:id',
+  requireMinRole(ROLES.DIETITIAN),
+  asyncHandler(whatsappController.deleteMessage)
 );
 
 export default router;

@@ -32,4 +32,9 @@ export class MetaClient {
     const res = await this.client.get(`/${wabaId}`);
     return res.data;
   }
+
+  async sendMessage(phoneNumberId, payload) {
+    const res = await this.client.post(`/${phoneNumberId}/messages`, payload);
+    return res.data;
+  }
 }
