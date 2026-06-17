@@ -42,6 +42,8 @@ COPY --from=deps /app/node_modules ./node_modules
 
 COPY --from=deps /app/node_modules/.prisma ./node_modules/.prisma
 
+COPY --from=deps /root/.cache/puppeteer /root/.cache/puppeteer
+
 COPY . .
 
 EXPOSE 5000
