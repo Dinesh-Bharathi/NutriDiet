@@ -29,6 +29,7 @@ export const whatsappMessageSendSchema = z.object({
   locationName: z.string().trim().optional().nullable(),
   locationAddress: z.string().trim().optional().nullable(),
   replyToMessageId: z.string().trim().optional().nullable(),
+  correlationId: z.string().trim().optional().nullable(),
   
   // templates
   templateName: z.string().trim().optional().nullable(),

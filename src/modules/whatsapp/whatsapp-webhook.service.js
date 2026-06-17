@@ -429,14 +429,31 @@ export const whatsappWebhookService = {
                 const senderPhone = fromPhone;
                 
                 bodyContent = reactionEmoji || "Removed reaction";
-                
+
+                // eslint-disable-next-line no-console
+                console.log(
+                  `[WHATSAPP_REACTION] Raw payload received\n` +
+                  `emoji=${reactionEmoji || 'none'}\n` +
+                  `senderPhone=${senderPhone}\n` +
+                  `targetWamid=${targetMetaId}`
+                );
+
                 const targetMsg = await prisma.whatsAppMessage.findFirst({
                   where: { metaMessageId: targetMetaId, tenantId }
                 });
+
+                // eslint-disable-next-line no-console
+                console.log(
+                  `[WHATSAPP_REACTION] Message lookup result\n` +
+                  `found=${!!targetMsg}\n` +
+                  `messageId=${targetMsg ? targetMsg.id : 'N/A'}\n` +
+                  `targetWamid=${targetMetaId}`
+                );
                 
                 if (targetMsg) {
+                  let dbResult = null;
                   if (reactionEmoji) {
-                    await prisma.whatsappReaction.upsert({
+                    dbResult = await prisma.whatsAppReaction.upsert({
                       where: {
                         messageId_senderPhone: {
                           messageId: targetMsg.id,
@@ -457,15 +474,22 @@ export const whatsappWebhookService = {
                       },
                     });
                   } else {
-                    await prisma.whatsappReaction.deleteMany({
+                    dbResult = await prisma.whatsAppReaction.deleteMany({
                       where: {
                         messageId: targetMsg.id,
                         senderPhone,
                       },
                     });
                   }
+
+                  // eslint-disable-next-line no-console
+                  console.log(
+                    `[WHATSAPP_REACTION] DB upsert result\n` +
+                    `action=${reactionEmoji ? 'upsert' : 'delete'}\n` +
+                    `result=${JSON.stringify(dbResult)}`
+                  );
                   
-                  const allReactions = await prisma.whatsappReaction.findMany({
+                  const allReactions = await prisma.whatsAppReaction.findMany({
                     where: { messageId: targetMsg.id },
                     select: { senderPhone: true, emoji: true, senderName: true }
                   });
@@ -475,6 +499,14 @@ export const whatsappWebhookService = {
                     metaMessageId: targetMsg.metaMessageId,
                     reactions: allReactions,
                   });
+
+                  // eslint-disable-next-line no-console
+                  console.log(
+                    `[WHATSAPP_REACTION] Socket emission result\n` +
+                    `event=whatsapp:message_reaction\n` +
+                    `targetMessageId=${targetMsg.id}\n` +
+                    `reactionsCount=${allReactions.length}`
+                  );
                 }
               }
             }
@@ -486,20 +518,39 @@ export const whatsappWebhookService = {
                 where: { metaMessageId: wamid, tenantId }
               });
               if (existingMsg) {
-                await prisma.whatsAppMessage.update({
-                  where: { id: existingMsg.id },
-                  data: {
-                    deletedAt: timestamp,
-                  }
-                });
-                
-                emitTenantEvent(tenantId, "whatsapp:message_deleted", {
-                  id: existingMsg.id,
-                  metaMessageId: existingMsg.metaMessageId,
-                  deletedAt: timestamp,
-                });
-                
-                continue;
+                 await prisma.whatsAppMessage.update({
+                   where: { id: existingMsg.id },
+                   data: {
+                     deletedAt: timestamp,
+                     deleteSource: 'META',
+                     deletedBy: 'Meta Webhook',
+                   }
+                 });
+                 
+                 // eslint-disable-next-line no-console
+                 console.log(
+                   `[WHATSAPP_DELETE] Message deleted\n` +
+                   `messageId=${existingMsg.id}\n` +
+                   `metaMessageId=${existingMsg.metaMessageId}\n` +
+                   `deletedAt=${timestamp}`
+                 );
+
+                 emitTenantEvent(tenantId, "whatsapp:message_deleted", {
+                   id: existingMsg.id,
+                   metaMessageId: existingMsg.metaMessageId,
+                   deletedAt: timestamp,
+                   deleteSource: 'META',
+                   deletedBy: 'Meta Webhook',
+                 });
+
+                 // eslint-disable-next-line no-console
+                 console.log(
+                   `[WHATSAPP_DELETE] Broadcast emitted\n` +
+                   `messageId=${existingMsg.id}\n` +
+                   `metaMessageId=${existingMsg.metaMessageId}`
+                 );
+                 
+                 continue;
               }
             }
 

@@ -180,6 +180,30 @@ export const whatsappController = {
   },
 
   /**
+   * POST /api/v1/whatsapp/messages/:id/react
+   * Reacts to a message from the web application.
+   */
+  async reactToMessage(req, res) {
+    if (!req.user || (!req.user.userId && !req.user.id)) {
+      throw new AppError('Authenticated user required to react to messages', 401);
+    }
+
+    const tenantId = req.user.tenantId;
+    const messageId = req.params.id;
+    const userId = req.user.userId || req.user.id;
+    const { emoji } = req.body;
+
+    const result = await whatsappService.reactToMessage(tenantId, userId, messageId, emoji);
+
+    return sendSuccess(
+      res,
+      HTTP_STATUS.OK,
+      emoji ? 'Reaction added successfully' : 'Reaction removed successfully',
+      result
+    );
+  },
+
+  /**
    * PUT /api/v1/whatsapp/conversations/:id/archive
    * Toggle archived state of conversation.
    */

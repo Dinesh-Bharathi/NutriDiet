@@ -1675,6 +1675,8 @@ model WhatsAppMessage {
   
   deletedAt         DateTime?
   deletedByUserId   String?
+  deleteSource      String?                  @db.VarChar(20)
+  deletedBy         String?                  @db.VarChar(100)
   
   createdAt         DateTime                 @default(now())
   updatedAt         DateTime                 @updatedAt

@@ -496,7 +496,7 @@ export const whatsappService = {
       throw new AppError('Authenticated user required for outbound WhatsApp messages', 401);
     }
 
-    const correlationId = crypto.randomUUID();
+    const correlationId = payload.correlationId || crypto.randomUUID();
     const redis = getRedisClient();
 
     const conversation = await prisma.whatsAppConversation.findFirst({
@@ -814,6 +814,14 @@ export const whatsappService = {
    * @returns {Promise<object>}
    */
   async softDeleteMessage(tenantId, userId, messageId) {
+    const user = await prisma.user.findFirst({
+      where: { id: userId, tenantId },
+    });
+
+    if (!user) {
+      throw new AppError('Authenticated user required to delete messages', 401);
+    }
+
     const message = await prisma.whatsAppMessage.findFirst({
       where: { id: messageId, tenantId },
     });
@@ -822,21 +830,148 @@ export const whatsappService = {
       throw ApiError.notFound('Message not found');
     }
 
+    const senderName = `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'Staff';
+
     const updated = await prisma.whatsAppMessage.update({
       where: { id: messageId },
       data: {
         deletedAt: new Date(),
         deletedByUserId: userId,
+        deleteSource: 'STAFF',
+        deletedBy: senderName,
       },
     });
 
-    emitTenantEvent(tenantId, 'whatsapp:message_status', {
+    // eslint-disable-next-line no-console
+    console.log(
+      `[WHATSAPP_DELETE] Message deleted\n` +
+      `messageId=${messageId}\n` +
+      `metaMessageId=${message.metaMessageId || 'N/A'}\n` +
+      `deletedAt=${updated.deletedAt}`
+    );
+
+    emitTenantEvent(tenantId, 'whatsapp:message_deleted', {
       id: messageId,
-      status: 'DELETED',
+      metaMessageId: message.metaMessageId,
       deletedAt: updated.deletedAt,
+      deleteSource: updated.deleteSource,
+      deletedBy: updated.deletedBy,
     });
 
+    // eslint-disable-next-line no-console
+    console.log(
+      `[WHATSAPP_DELETE] Broadcast emitted\n` +
+      `messageId=${messageId}\n` +
+      `metaMessageId=${message.metaMessageId || 'N/A'}`
+    );
+
     return updated;
+  },
+
+  /**
+   * React to a WhatsApp message from the NutriDiet web application.
+   *
+   * @param {string} tenantId
+   * @param {string} userId
+   * @param {string} messageId
+   * @param {string|null} emoji
+   * @returns {Promise<object>}
+   */
+  async reactToMessage(tenantId, userId, messageId, emoji) {
+    // eslint-disable-next-line no-console
+    console.log(
+      `[WHATSAPP_REACTION] Raw payload received\n` +
+      `emoji=${emoji || 'none'}\n` +
+      `userId=${userId}\n` +
+      `targetMessageId=${messageId}`
+    );
+
+    const user = await prisma.user.findFirst({
+      where: { id: userId, tenantId },
+    });
+
+    if (!user) {
+      throw new AppError('Authenticated user required to react to messages', 401);
+    }
+
+    const message = await prisma.whatsAppMessage.findFirst({
+      where: { id: messageId, tenantId },
+    });
+
+    // eslint-disable-next-line no-console
+    console.log(
+      `[WHATSAPP_REACTION] Message lookup result\n` +
+      `found=${!!message}\n` +
+      `messageId=${messageId}\n` +
+      `targetWamid=${message ? message.metaMessageId : 'N/A'}`
+    );
+
+    if (!message) {
+      throw ApiError.notFound('Message not found');
+    }
+
+    const senderPhone = `user-${user.id}`;
+    const senderName = `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'Staff';
+
+    let dbResult = null;
+    if (emoji) {
+      dbResult = await prisma.whatsAppReaction.upsert({
+        where: {
+          messageId_senderPhone: {
+            messageId,
+            senderPhone,
+          },
+        },
+        update: {
+          emoji,
+        },
+        create: {
+          tenantId,
+          messageId,
+          senderPhone,
+          senderName,
+          emoji,
+        },
+      });
+    } else {
+      dbResult = await prisma.whatsAppReaction.deleteMany({
+        where: {
+          messageId,
+          senderPhone,
+        },
+      });
+    }
+
+    // eslint-disable-next-line no-console
+    console.log(
+      `[WHATSAPP_REACTION] DB upsert result\n` +
+      `action=${emoji ? 'upsert' : 'delete'}\n` +
+      `result=${JSON.stringify(dbResult)}`
+    );
+
+    const allReactions = await prisma.whatsAppReaction.findMany({
+      where: { messageId },
+      select: { senderPhone: true, emoji: true, senderName: true },
+    });
+
+    emitTenantEvent(tenantId, 'whatsapp:message_reaction', {
+      targetMessageId: messageId,
+      metaMessageId: message.metaMessageId,
+      reactions: allReactions,
+    });
+
+    // eslint-disable-next-line no-console
+    console.log(
+      `[WHATSAPP_REACTION] Socket emission result\n` +
+      `event=whatsapp:message_reaction\n` +
+      `targetMessageId=${messageId}\n` +
+      `reactionsCount=${allReactions.length}`
+    );
+
+    return {
+      targetMessageId: messageId,
+      reactions: allReactions,
+    };
   },
 
   /**

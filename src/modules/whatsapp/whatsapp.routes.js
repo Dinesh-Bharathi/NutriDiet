@@ -129,6 +129,13 @@ router.put(
   asyncHandler(whatsappController.optInClient)
 );
 
+// POST react to a message (ASSISTANT or higher)
+router.post(
+  '/messages/:id/react',
+  requireMinRole(ROLES.ASSISTANT),
+  asyncHandler(whatsappController.reactToMessage)
+);
+
 // DELETE soft delete a message (DIETITIAN or higher)
 router.delete(
   '/messages/:id',
