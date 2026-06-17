@@ -1,6 +1,7 @@
 import puppeteer from "puppeteer";
 import logger from "../../../utils/logger.js";
 import PdfError from "../pdf-error.js";
+import fs from "fs";
 
 let browser = null;
 let isInitializing = false;
@@ -28,6 +29,15 @@ export const browserManager = {
 
     isInitializing = true;
     try {
+      logger.info("Puppeteer info", {
+        version: puppeteer.version,
+      });
+      logger.info("Chrome diagnostics", {
+        cacheExists: fs.existsSync("/root/.cache/puppeteer"),
+        chromeExists: fs.existsSync(
+          "/root/.cache/puppeteer/chrome/linux-149.0.7827.22/chrome-linux64/chrome",
+        ),
+      });
       logger.info(
         "Initializing singleton Puppeteer browser instance (lazy)...",
       );
