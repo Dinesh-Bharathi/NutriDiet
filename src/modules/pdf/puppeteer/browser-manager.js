@@ -28,7 +28,10 @@ export const browserManager = {
 
     isInitializing = true;
     try {
-      logger.info("Initializing singleton Puppeteer browser instance (lazy)...");
+      logger.info(
+        "Initializing singleton Puppeteer browser instance (lazy)...",
+      );
+      logger.info("puppeteer Executable path:", puppeteer.executablePath());
       browser = await puppeteer.launch({
         headless: "new",
         args: [
@@ -49,7 +52,7 @@ export const browserManager = {
         500,
         "PDF_BROWSER_UNAVAILABLE",
         "PDF rendering engine browser failed to initialize",
-        err.message
+        err.message,
       );
     } finally {
       isInitializing = false;
@@ -78,9 +81,12 @@ export const browserManager = {
         browser = null;
         logger.info("Puppeteer browser instance shutdown completed.");
       } catch (err) {
-        logger.error("Error encountered while shutting down browser instance:", {
-          error: err.message,
-        });
+        logger.error(
+          "Error encountered while shutting down browser instance:",
+          {
+            error: err.message,
+          },
+        );
       }
     }
   },

@@ -17,7 +17,8 @@
     "db:studio": "prisma studio",
     "db:reset": "prisma migrate reset --force",
     "lint": "eslint src/ --ext .js",
-    "test": "node --experimental-vm-modules node_modules/.bin/jest --detectOpenHandles"
+    "test": "node --experimental-vm-modules node_modules/.bin/jest --detectOpenHandles",
+    "postinstall": "npx puppeteer browsers install chrome"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1064.0",
