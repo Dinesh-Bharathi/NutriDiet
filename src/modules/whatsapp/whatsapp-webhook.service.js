@@ -291,32 +291,8 @@ export const whatsappWebhookService = {
 
             logWhatsApp('[WHATSAPP_WEBHOOK] Tenant resolved', { tenantId });
 
-            // Get or create conversation for this client
-            const conversation = await prisma.whatsAppConversation.upsert({
-              where: {
-                tenantId_clientId: {
-                  tenantId,
-                  clientId: client.id,
-                },
-              },
-              update: {
-                unreadCount: { increment: 1 },
-                lastClientMessageAt: timestamp,
-                lastInboundAt: timestamp,
-              },
-              create: {
-                tenantId,
-                clientId: client.id,
-                unreadCount: 1,
-                conversationStartedAt: timestamp,
-                lastClientMessageAt: timestamp,
-                lastInboundAt: timestamp,
-              },
-            });
-
-            logWhatsApp('[WHATSAPP_WEBHOOK] Conversation resolved', { tenantId, conversationId: conversation.id });
-
-            // Map message types and handle optimizations
+            // Map message types first so we know whether this is a REACTION event
+            // (we need mappedType before the conversation upsert to avoid inflating unreadCount)
             const rawType = String(messageData.type).toUpperCase();
             let mappedType = "TEXT";
             if (["TEXT", "IMAGE", "DOCUMENT", "AUDIO", "VIDEO", "LOCATION", "CONTACT", "REACTION", "INTERACTIVE", "SYSTEM"].includes(rawType)) {
@@ -329,6 +305,36 @@ export const whatsappWebhookService = {
             if (rawType === "STICKER") {
               mappedType = "STICKER";
             }
+
+            // Get or create conversation for this client.
+            // Reactions must NOT increment unreadCount — they are not new messages.
+            const isReactionEvent = mappedType === "REACTION";
+            const conversation = await prisma.whatsAppConversation.upsert({
+              where: {
+                tenantId_clientId: {
+                  tenantId,
+                  clientId: client.id,
+                },
+              },
+              update: isReactionEvent
+                ? {} // Reactions do not touch unreadCount or lastClientMessageAt
+                : {
+                    unreadCount: { increment: 1 },
+                    lastClientMessageAt: timestamp,
+                    lastInboundAt: timestamp,
+                  },
+              create: {
+                tenantId,
+                clientId: client.id,
+                unreadCount: isReactionEvent ? 0 : 1,
+                conversationStartedAt: timestamp,
+                lastClientMessageAt: isReactionEvent ? undefined : timestamp,
+                lastInboundAt: isReactionEvent ? undefined : timestamp,
+              },
+            });
+
+            logWhatsApp('[WHATSAPP_WEBHOOK] Conversation resolved', { tenantId, conversationId: conversation.id });
+
 
             let bodyContent = null;
             let mimeType = null;
@@ -420,15 +426,13 @@ export const whatsappWebhookService = {
               }
             }
 
-            // 6. Reactions
+            // 6. Reactions — MUST continue after handling; must never reach message-creation block
             else if (mappedType === "REACTION") {
               const reactionData = messageData.reaction;
               if (reactionData) {
                 const reactionEmoji = reactionData.emoji || null;
                 const targetMetaId = reactionData.message_id;
                 const senderPhone = fromPhone;
-                
-                bodyContent = reactionEmoji || "Removed reaction";
 
                 // eslint-disable-next-line no-console
                 console.log(
@@ -449,7 +453,7 @@ export const whatsappWebhookService = {
                   `messageId=${targetMsg ? targetMsg.id : 'N/A'}\n` +
                   `targetWamid=${targetMetaId}`
                 );
-                
+
                 if (targetMsg) {
                   let dbResult = null;
                   if (reactionEmoji) {
@@ -488,12 +492,12 @@ export const whatsappWebhookService = {
                     `action=${reactionEmoji ? 'upsert' : 'delete'}\n` +
                     `result=${JSON.stringify(dbResult)}`
                   );
-                  
+
                   const allReactions = await prisma.whatsAppReaction.findMany({
                     where: { messageId: targetMsg.id },
                     select: { senderPhone: true, emoji: true, senderName: true }
                   });
-                  
+
                   emitTenantEvent(tenantId, 'whatsapp:message_reaction', {
                     targetMessageId: targetMsg.id,
                     metaMessageId: targetMsg.metaMessageId,
@@ -509,10 +513,16 @@ export const whatsappWebhookService = {
                   );
                 }
               }
+
+              // Reaction is fully handled — skip message-creation block unconditionally
+              continue;
             }
 
-            // Deletions check
-            const isDeletion = messageData.type === 'unsupported' || (messageData.errors && messageData.errors.some(e => e.code === 131051 || String(e.message).toLowerCase().includes('deleted')));
+            // Deletions check — REACTION types are already handled above and cannot reach here
+            const isDeletion = mappedType !== 'REACTION' && (
+              messageData.type === 'unsupported' ||
+              (messageData.errors && messageData.errors.some(e => e.code === 131051 || String(e.message).toLowerCase().includes('deleted')))
+            );
             if (isDeletion) {
               const existingMsg = await prisma.whatsAppMessage.findFirst({
                 where: { metaMessageId: wamid, tenantId }

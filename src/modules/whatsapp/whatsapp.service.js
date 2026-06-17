@@ -402,7 +402,10 @@ export const whatsappService = {
     const whereClause = {
       tenantId,
       conversationId,
-      deletedAt: null, // Skip soft deleted items
+      // Soft-deleted messages are intentionally included.
+      // The frontend renders them as "🚫 This message was deleted" placeholders.
+      // Never add `deletedAt: null` here — doing so causes deleted messages to vanish
+      // after a page load or query refetch, breaking the deletion UX.
     };
 
     const findParams = {
