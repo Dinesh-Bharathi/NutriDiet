@@ -6,6 +6,7 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y \
     dumb-init \
     openssl \
+    unzip \
     ca-certificates \
     fonts-liberation \
     libasound2 \
@@ -38,8 +39,6 @@ FROM base AS deps
 COPY package*.json ./
 
 RUN npm ci --omit=dev
-
-RUN npx puppeteer browsers install chrome
 
 COPY prisma ./prisma
 
