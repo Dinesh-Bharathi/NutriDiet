@@ -358,7 +358,10 @@ export const whatsappService = {
     const findParams = {
       where: whereClause,
       take: limitNum + 1,
-      orderBy: { lastMessageAt: 'desc' },
+      orderBy: [
+        { lastMessageAt: 'desc' },
+        { id: 'desc' }
+      ],
       include: {
         client: {
           select: {
@@ -1239,6 +1242,23 @@ export const whatsappService = {
     const online = resolvedLastSeen ? (now - resolvedLastSeen < 5 * 60 * 1000) : false;
     const lastSeenAt = resolvedLastSeen ? new Date(resolvedLastSeen).toISOString() : null;
     
+    let client = conv.client;
+    if (!client && conv.clientId) {
+      try {
+        client = await prisma.client.findUnique({
+          where: { id: conv.clientId },
+          select: {
+            firstName: true,
+            lastName: true,
+            avatarAssetId: true,
+            phone: true,
+          },
+        });
+      } catch (err) {
+        logger.error("[WhatsApp Service] Failed to fetch client for DTO", { error: err.message });
+      }
+    }
+    
     return {
       id: conv.id,
       tenantId: conv.tenantId,
@@ -1258,7 +1278,7 @@ export const whatsappService = {
       lastPractitionerMessageAt: conv.lastPractitionerMessageAt ? conv.lastPractitionerMessageAt.toISOString() : null,
       createdAt: conv.createdAt.toISOString(),
       updatedAt: conv.updatedAt.toISOString(),
-      client: conv.client,
+      client,
       messagesCount: conv._count?.messages ?? 0,
       clientPresence: {
         online,
