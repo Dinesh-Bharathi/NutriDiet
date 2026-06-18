@@ -69,6 +69,10 @@ router.use('/whatsapp', whatsappRouter);
 import notificationRouter from '../modules/notifications/notification.routes.js';
 router.use('/notifications', notificationRouter);
 
+// Notification Preferences routes (protected)
+import notificationPreferencesRouter from '../modules/notification-preferences/notification-preferences.routes.js';
+router.use('/notification-preferences', notificationPreferencesRouter);
+
 // Repeat Cycles & Template Cycles (protected)
 import cycleRouter from '../modules/diet-plans/cycle.routes.js';
 import templateCycleRouter from '../modules/diet-plan-templates/template-cycle.routes.js';

@@ -1,0 +1,49 @@
+{
+  "whatsapp": [
+    {
+      "id": "message-default",
+      "label": "Default Message",
+      "file": "/sounds/message-default.mp3"
+    },
+    {
+      "id": "message-soft",
+      "label": "Soft Message",
+      "file": "/sounds/message-soft.mp3"
+    }
+  ],
+  "voice": [
+    {
+      "id": "voice-default",
+      "label": "Default Voice Note",
+      "file": "/sounds/voice-default.mp3"
+    }
+  ],
+  "reminder": [
+    {
+      "id": "reminder-default",
+      "label": "Default Reminder",
+      "file": "/sounds/reminder-default.mp3"
+    }
+  ],
+  "appointment": [
+    {
+      "id": "appointment-default",
+      "label": "Default Appointment",
+      "file": "/sounds/appointment-default.mp3"
+    }
+  ],
+  "campaign": [
+    {
+      "id": "campaign-default",
+      "label": "Default Campaign",
+      "file": "/sounds/campaign-default.mp3"
+    }
+  ],
+  "broadcast": [
+    {
+      "id": "broadcast-default",
+      "label": "Default Broadcast",
+      "file": "/sounds/broadcast-default.mp3"
+    }
+  ]
+}

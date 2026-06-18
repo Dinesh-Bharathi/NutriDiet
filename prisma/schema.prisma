@@ -257,6 +257,7 @@ model User {
   uploadedFiles                FileAsset[]               @relation("FileUploader")
   whatsAppMessages             WhatsAppMessage[]
   notifications                Notification[]
+  notificationPreference       NotificationPreference?
 
   // Compound unique: email must be unique within a tenant (not globally)
   @@unique([tenantId, email])
@@ -1743,6 +1744,24 @@ model Notification {
   @@index([tenantId, userId, isArchived])
   @@index([createdAt])
   @@map("notifications")
+}
+
+model NotificationPreference {
+  id                   String   @id @default(cuid())
+  userId               String   @unique
+  browserNotifications Boolean  @default(true)
+  inAppNotifications   Boolean  @default(true)
+  soundNotifications   Boolean  @default(true)
+  soundVolume          Int      @default(80)
+  soundId              String   @default("message-default")
+  categories           Json?    // Kept for backward compatibility migration
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("notification_preferences")
 }
 
 
