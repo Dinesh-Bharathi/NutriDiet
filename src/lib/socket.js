@@ -115,6 +115,18 @@ export function initSocketServer(server) {
       const userRoom = `user-${socket.user.id}`;
       socket.join(userRoom);
 
+      // Handle user presence tracking for smart notification suppression
+      socket.on("presence", (data) => {
+        const { conversationId, active } = data || {};
+        if (active && conversationId) {
+          socket.presenceConversationId = conversationId;
+          socket.presenceLastSeenAt = Date.now();
+        } else {
+          socket.presenceConversationId = null;
+          socket.presenceLastSeenAt = null;
+        }
+      });
+
       logger.info(`[WHATSAPP_SOCKET] Connected: socketId=${socket.id}, tenantId=${socket.tenantId}, userId=${socket.user.id}, room=${userRoom}`, {
         userId: socket.user.id,
         tenantId: socket.tenantId,
@@ -196,4 +208,31 @@ export function initSocketServer(server) {
     } catch (err) {
       return 0;
     }
+  }
+
+  /**
+   * Checks if a user is actively viewing a specific conversation.
+   *
+   * @param {string} tenantId
+   * @param {string} userId
+   * @param {string} conversationId
+   * @returns {boolean} True if the user is active in the conversation
+   */
+  export function isUserActiveInConversation(tenantId, userId, conversationId) {
+    if (!ioInstance) return false;
+    
+    const namespace = ioInstance.of(`/tenant-${tenantId}`);
+    const activeSockets = Array.from(namespace.sockets.values());
+    
+    const ACTIVE_PRESENCE_WINDOW = 60 * 1000; // 60 seconds
+    const now = Date.now();
+    
+    return activeSockets.some((s) => {
+      return (
+        s.user?.id === userId &&
+        s.presenceConversationId === conversationId &&
+        s.presenceLastSeenAt &&
+        (now - s.presenceLastSeenAt < ACTIVE_PRESENCE_WINDOW)
+      );
+    });
   }

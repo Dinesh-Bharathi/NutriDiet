@@ -4,7 +4,6 @@
 // and Phase 6D (mobile push).
 
 import prisma from '../../../lib/prisma.js';
-import { logWhatsApp } from '../../whatsapp/whatsapp-logger.js';
 import {
   NOTIFICATION_TYPES,
   NOTIFICATION_PRIORITIES,
@@ -100,9 +99,9 @@ export function buildWhatsAppNotificationPayload({
   const messagePreview = (label || preview || 'New message').slice(0, PREVIEW_MAX_LENGTH);
 
   // Action URL — navigates directly to the conversation in the WhatsApp message center.
-  // Format is the actual route: /messages?conversationId={conversationId}
+  // Format is the actual route: /messages?conversationId={conversationId}&messageId={messageId}
   // This will be used in Phase 6C (browser notifications) and Phase 6D (mobile push).
-  const actionUrl = `/messages?conversationId=${conversationId}`;
+  const actionUrl = `/messages?conversationId=${conversationId}&messageId=${messageId}`;
 
   return {
     userId,

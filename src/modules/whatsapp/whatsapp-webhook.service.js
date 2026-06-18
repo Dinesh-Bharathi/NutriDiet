@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import prisma from "../../lib/prisma.js";
 import { getRedisClient } from "../../lib/redis.js";
-import { emitTenantEvent } from "../../lib/socket.js";
+import { emitTenantEvent, isUserActiveInConversation } from "../../lib/socket.js";
 import { logWhatsApp, logWhatsAppVerbose } from "./whatsapp-logger.js";
 import { decrypt } from "../../utils/encryption.js";
 import { mediaService } from "./services/media.service.js";
@@ -826,6 +826,17 @@ export const whatsappWebhookService = {
 
       for (const userId of recipientIds) {
         try {
+          // ── Smart presence suppression ─────────────────────────────────────
+          if (isUserActiveInConversation(tenantId, userId, conversation.id)) {
+            logWhatsApp(
+              '[WHATSAPP_NOTIFY]',
+              { tenantId, userId, conversationId: conversation.id },
+              `Smart notification suppressed: user is actively viewing this conversation.`,
+              'info',
+            );
+            continue;
+          }
+
           // ── Redis idempotency check ──────────────────────────────────────
           // Key format: notification:whatsapp:msg:{wamid}:{userId}
           // TTL: 86400s (24 h) — survives webhook replay and BullMQ retries.
