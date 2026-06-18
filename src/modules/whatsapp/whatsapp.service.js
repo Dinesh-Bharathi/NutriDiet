@@ -1,4 +1,8 @@
 import crypto from 'crypto';
+import os from 'os';
+import fs from 'fs';
+import path from 'path';
+import axios from 'axios';
 import prisma from '../../lib/prisma.js';
 import { whatsappRepository } from './whatsapp.repository.js';
 import { metaValidator } from './providers/meta/meta-validator.js';
@@ -7,6 +11,7 @@ import { metaMessageFormatter } from './providers/meta/meta-message.js';
 import { encrypt, decrypt } from '../../utils/encryption.js';
 import { emitTenantEvent } from '../../lib/socket.js';
 import ApiError from '../../utils/ApiError.js';
+import storageProvider from '../../lib/storage/index.js';
 
 export class AppError extends ApiError {
   constructor(message, statusCode = 401) {
@@ -17,6 +22,8 @@ export class AppError extends ApiError {
 import logger from '../../utils/logger.js';
 import { getRedisClient } from '../../lib/redis.js';
 import { logWhatsApp, logWhatsAppVerbose } from './whatsapp-logger.js';
+import { transcodeToOggOpus, getAudioInfo } from '../../lib/media/voice-transcoder.js';
+
 
 export function generatePreviewText(type, body, messageData = {}) {
   switch (type) {
@@ -55,6 +62,141 @@ export function generatePreviewText(type, body, messageData = {}) {
       return body || 'System event';
     default:
       return body || `[${type}]`;
+  }
+}
+
+
+// ---------------------------------------------------------------------------
+// Media validation helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * WhatsApp Cloud API media constraints per type.
+ * Sizes in bytes. MIME lists are taken from Meta's official documentation.
+ */
+const WHATSAPP_MEDIA_CONSTRAINTS = {
+  image: {
+    maxBytes: 5 * 1024 * 1024,
+    allowedMimes: ['image/jpeg', 'image/png', 'image/webp'],
+    label: 'IMAGE',
+  },
+  video: {
+    maxBytes: 16 * 1024 * 1024,
+    allowedMimes: ['video/mp4', 'video/3gp'],
+    label: 'VIDEO',
+  },
+  audio: {
+    maxBytes: 16 * 1024 * 1024,
+    allowedMimes: ['audio/aac', 'audio/mp4', 'audio/mpeg', 'audio/amr', 'audio/ogg', 'audio/ogg; codecs=opus', 'audio/webm', 'audio/webm; codecs=opus'],
+    label: 'AUDIO',
+  },
+  voice: {
+    maxBytes: 16 * 1024 * 1024,
+    allowedMimes: ['audio/aac', 'audio/mp4', 'audio/mpeg', 'audio/amr', 'audio/ogg', 'audio/ogg; codecs=opus', 'audio/webm', 'audio/webm; codecs=opus'],
+    label: 'VOICE',
+  },
+  document: {
+    maxBytes: 100 * 1024 * 1024,
+    allowedMimes: null, // Meta accepts most document types; skip MIME check
+    label: 'DOCUMENT',
+  },
+};
+
+/**
+ * Validate MIME type and file size against WhatsApp Cloud API constraints.
+ * Returns { valid: true } or { valid: false, reason: string }.
+ *
+ * @param {{ mimeType: string, fileSize: number }} asset
+ * @param {string} mediaType  - 'IMAGE' | 'VIDEO' | 'AUDIO' | 'DOCUMENT' | 'VOICE'
+ * @returns {{ valid: boolean, reason?: string }}
+ */
+function validateWhatsAppMedia(asset, mediaType) {
+  const key = mediaType.toLowerCase();
+  const constraints = WHATSAPP_MEDIA_CONSTRAINTS[key];
+  if (!constraints) {
+    // Unknown type — let Meta decide
+    return { valid: true };
+  }
+
+  const mimeBase = (asset.mimeType || '').split(';')[0].trim().toLowerCase();
+
+  if (constraints.allowedMimes) {
+    const allowed = constraints.allowedMimes.map(m => m.split(';')[0].trim().toLowerCase());
+    if (!allowed.includes(mimeBase)) {
+      return {
+        valid: false,
+        reason: `MIME type "${asset.mimeType}" is not supported for ${constraints.label} messages by WhatsApp. Allowed: ${constraints.allowedMimes.join(', ')}.`,
+      };
+    }
+  }
+
+  if (asset.fileSize && asset.fileSize > constraints.maxBytes) {
+    const mb = (asset.fileSize / (1024 * 1024)).toFixed(2);
+    const maxMb = (constraints.maxBytes / (1024 * 1024)).toFixed(0);
+    return {
+      valid: false,
+      reason: `File size ${mb} MB exceeds the ${maxMb} MB limit for ${constraints.label} messages.`,
+    };
+  }
+
+  return { valid: true };
+}
+
+/**
+ * Performs a HEAD request to verify the media URL is publicly reachable
+ * before submitting it to the Meta API. Logs result using WHATSAPP_MEDIA_DEBUG tags.
+ *
+ * @param {string} url
+ * @param {object} logCtx  - { correlationId, tenantId, messageType }
+ * @returns {Promise<{ reachable: boolean, status?: number, reason?: string }>}
+ */
+async function validateMediaUrlReachable(url, logCtx) {
+  const { correlationId, tenantId, messageType } = logCtx;
+  logger.info(`[WHATSAPP_MEDIA_DEBUG] HEAD check start`, {
+    correlationId,
+    tenantId,
+    messageType,
+    url,
+  });
+
+  try {
+    const response = await axios.head(url, { timeout: 8000, maxRedirects: 5 });
+    const status = response.status;
+    const contentType = response.headers['content-type'] || 'unknown';
+    const contentLength = response.headers['content-length'] || 'unknown';
+
+    logger.info(`[WHATSAPP_MEDIA_DEBUG] HEAD check OK`, {
+      correlationId,
+      tenantId,
+      messageType,
+      url,
+      status,
+      contentType,
+      contentLength,
+    });
+
+    if (status >= 400) {
+      logger.warn(`[WHATSAPP_MEDIA_FAILURE] HEAD check returned HTTP ${status} — Meta will likely reject this URL`, {
+        correlationId,
+        tenantId,
+        messageType,
+        url,
+        status,
+      });
+      return { reachable: false, status, reason: `HTTP ${status}` };
+    }
+
+    return { reachable: true, status, contentType, contentLength };
+  } catch (err) {
+    const reason = err.code || err.message || 'unknown error';
+    logger.warn(`[WHATSAPP_MEDIA_FAILURE] HEAD check failed — URL may be unreachable by Meta`, {
+      correlationId,
+      tenantId,
+      messageType,
+      url,
+      reason,
+    });
+    return { reachable: false, reason };
   }
 }
 
@@ -625,11 +767,204 @@ export const whatsappService = {
         mimeType = asset.mimeType;
         size = asset.fileSize;
         mediaUrl = asset.secureUrl || asset.url;
-        mediaFileName = asset.fileName || asset.originalName;
-        storageFileId = asset.id;
+
+        // --- [WHATSAPP_MEDIA_DEBUG] Log raw asset details ---
+        logger.info('[WHATSAPP_MEDIA_DEBUG] Asset resolved', {
+          correlationId,
+          tenantId,
+          messageType: payload.type,
+          assetId: asset.id,
+          mimeType: asset.mimeType,
+          fileSize: asset.fileSize,
+          visibility: asset.visibility,
+          rawUrl: mediaUrl,
+        });
+
+        // --- Step 1: Validate MIME type & file size against Meta constraints ---
+        // Skip MIME check for VOICE — we always transcode to OGG/Opus regardless of source format
+        if (payload.type !== 'VOICE') {
+          const mediaValidation = validateWhatsAppMedia(asset, payload.type);
+          if (!mediaValidation.valid) {
+            logger.warn('[WHATSAPP_MEDIA_FAILURE] Media validation failed — aborting send', {
+              correlationId,
+              tenantId,
+              messageType: payload.type,
+              reason: mediaValidation.reason,
+            });
+            throw ApiError.badRequest(mediaValidation.reason);
+          }
+        }
+
+        // --- Step 1.5 [VOICE ONLY]: Transcode to OGG/Opus for WhatsApp mobile compatibility ---
+        if (payload.type === 'VOICE') {
+          let tmpInputPath = null;
+          let tmpOutputPath = null;
+
+          try {
+            const tmpDir = os.tmpdir();
+            const uniqueId = crypto.randomUUID();
+            const inputExt = path.extname(asset.originalName || asset.fileName || '.mp4') || '.mp4';
+            tmpInputPath = path.join(tmpDir, `wa-voice-in-${uniqueId}${inputExt}`);
+            tmpOutputPath = path.join(tmpDir, `wa-voice-out-${uniqueId}.ogg`);
+
+            // Download original file from R2 to temp disk
+            await storageProvider.downloadToFile(asset.publicId, tmpInputPath);
+
+            // Diagnostic: log original codec info
+            const originalInfo = await getAudioInfo(tmpInputPath);
+            logger.info('[VOICE_CODEC_ORIGINAL]', {
+              correlationId,
+              tenantId,
+              assetId: asset.id,
+              ...originalInfo,
+            });
+
+            // Transcode to OGG/Opus
+            await transcodeToOggOpus(tmpInputPath, tmpOutputPath);
+
+            // Diagnostic: log converted codec info
+            const convertedInfo = await getAudioInfo(tmpOutputPath);
+            logger.info('[VOICE_CODEC_CONVERTED]', {
+              correlationId,
+              tenantId,
+              ...convertedInfo,
+            });
+
+            // Build a multer-compatible file object for storageProvider.upload()
+            const convertedStat = fs.statSync(tmpOutputPath);
+            const convertedFileName = `voice-note-${uniqueId}.ogg`;
+            const multerLikeFile = {
+              path: tmpOutputPath,
+              originalname: convertedFileName,
+              mimetype: 'audio/ogg',
+              size: convertedStat.size,
+            };
+
+            // Upload converted file to R2 (reuse existing storage pipeline)
+            const folder = `nutri-diet/tenants/${tenantId}/WHATSAPP/${conversationId}`;
+            const convertedUpload = await storageProvider.upload(multerLikeFile, { folder, visibility: 'PRIVATE' });
+
+            // Persist a new FileAsset record for the converted file
+            const convertedAsset = await prisma.fileAsset.create({
+              data: {
+                tenantId,
+                entityType: 'WHATSAPP',
+                entityId: conversationId,
+                folder,
+                publicId: convertedUpload.public_id,
+                assetId: convertedUpload.asset_id,
+                resourceType: 'raw',
+                fileName: convertedFileName,
+                originalName: convertedFileName,
+                mimeType: 'audio/ogg',
+                extension: 'ogg',
+                fileSize: convertedStat.size,
+                url: convertedUpload.url,
+                secureUrl: convertedUpload.secure_url,
+                uploadedBy: userId,
+                visibility: 'PRIVATE',
+                status: 'ACTIVE',
+              },
+            });
+
+            // Use converted asset for Meta send
+            mimeType = 'audio/ogg';
+            size = convertedStat.size;
+            mediaFileName = convertedFileName;
+            storageFileId = convertedAsset.id;
+            asset = convertedAsset;
+            mediaUrl = convertedAsset.secureUrl || convertedAsset.url;
+
+            logger.info('[VOICE_CODEC_CONVERTED] Converted asset persisted', {
+              correlationId,
+              tenantId,
+              convertedAssetId: convertedAsset.id,
+              fileName: convertedFileName,
+              fileSize: convertedStat.size,
+            });
+
+          } catch (transcodeErr) {
+            logger.error('[VOICE_TRANSCODER] Transcoding failed — falling back to original asset', {
+              correlationId,
+              tenantId,
+              error: transcodeErr.message,
+            });
+            // Fall back to original asset (better to attempt send than fail silently)
+          } finally {
+            // Clean up temp files
+            if (tmpInputPath) { try { fs.unlinkSync(tmpInputPath); } catch { /* ignore */ } }
+            if (tmpOutputPath) { try { fs.unlinkSync(tmpOutputPath); } catch { /* ignore */ } }
+          }
+        }
+
+        // --- Step 2: Generate signed URL for private/protected assets ---
+        if (asset.visibility === 'PRIVATE' || asset.visibility === 'PROTECTED') {
+          try {
+            const signedUrl = await storageProvider.getPublicUrl(asset.publicId, { signed: true, expiresIn: 86400 });
+            logger.info('[WHATSAPP_MEDIA_DEBUG] Signed URL generated', {
+              correlationId,
+              tenantId,
+              messageType: payload.type,
+              assetId: asset.id,
+              signedUrl,
+            });
+            mediaUrl = signedUrl;
+          } catch (err) {
+            logger.error('[WHATSAPP_MEDIA_FAILURE] Failed to generate signed URL for Meta', {
+              correlationId,
+              tenantId,
+              messageType: payload.type,
+              assetId: asset.id,
+              error: err.message,
+            });
+            throw ApiError.internal('Failed to generate a secure download URL for this media file. Please try again.');
+          }
+        }
+
+        // --- Step 3: HEAD request — verify URL is publicly reachable by Meta ---
+        const headCheck = await validateMediaUrlReachable(mediaUrl, {
+          correlationId,
+          tenantId,
+          messageType: payload.type,
+        });
+        if (!headCheck.reachable) {
+          logger.warn('[WHATSAPP_MEDIA_FAILURE] Media URL not publicly reachable — Meta will reject', {
+            correlationId,
+            tenantId,
+            messageType: payload.type,
+            url: mediaUrl,
+            reason: headCheck.reason,
+          });
+          // Non-fatal: log and proceed
+        }
+
+        mediaFileName = mediaFileName || asset.fileName || asset.originalName;
+        storageFileId = storageFileId || asset.id;
       }
 
       const mediaType = payload.type;
+
+      // --- [VOICE_META_FINAL] Log final Meta payload details for VOICE messages ---
+      if (payload.type === 'VOICE') {
+        logger.info('[VOICE_META_FINAL]', {
+          correlationId,
+          tenantId,
+          messageId: 'pending',
+          mimeType,
+          fileName: mediaFileName,
+          mediaUrl,
+        });
+      }
+
+      logger.info('[WHATSAPP_MEDIA_DEBUG] Building Meta media payload', {
+        correlationId,
+        tenantId,
+        messageType: mediaType,
+        mediaUrl,
+        mediaFileName,
+        hasCaption: !!(payload.caption || payload.body),
+      });
+
       formattedPayload = metaMessageFormatter.media(
         client.phone,
         mediaType,
@@ -695,6 +1030,17 @@ export const whatsappService = {
     logWhatsAppVerbose('[WHATSAPP_META]', { correlationId, messageId: createdMsg.id, tenantId }, 'Meta Request Payload', formattedPayload);
 
     try {
+      // --- [VOICE_META_PAYLOAD] Dump exact payload sent to Meta for voice notes ---
+      if (payload.type === 'VOICE') {
+        logger.info('[VOICE_META_PAYLOAD] Dispatching voice note to Meta', {
+          correlationId,
+          tenantId,
+          messageId: createdMsg.id,
+          metaPayload: JSON.stringify(formattedPayload),
+          mediaUrl,
+          mimeType,
+        });
+      }
       const metaRes = await metaClient.sendMessage(connection.phoneNumberId, formattedPayload);
       const wamid = metaRes.messages?.[0]?.id;
 
@@ -705,6 +1051,20 @@ export const whatsappService = {
 
       logWhatsApp('[WHATSAPP_META]', { correlationId, messageId: createdMsg.id, metaMessageId: wamid, tenantId }, `Meta API Response: status=200, metaMessageId=${wamid}`);
       logWhatsAppVerbose('[WHATSAPP_META]', { correlationId, messageId: createdMsg.id, metaMessageId: wamid, tenantId }, 'Meta Response Payload', metaRes);
+
+      // --- [WHATSAPP_MEDIA_RESPONSE] Log successful media delivery confirmation ---
+      if (['IMAGE', 'VIDEO', 'AUDIO', 'DOCUMENT', 'VOICE'].includes(payload.type)) {
+        logger.info('[WHATSAPP_MEDIA_RESPONSE] Media message accepted by Meta', {
+          correlationId,
+          tenantId,
+          messageId: createdMsg.id,
+          metaMessageId: wamid,
+          messageType: payload.type,
+          mediaUrl,
+          mimeType,
+          fileSize: size,
+        });
+      }
 
       const updated = await prisma.whatsAppMessage.update({
         where: { id: createdMsg.id },

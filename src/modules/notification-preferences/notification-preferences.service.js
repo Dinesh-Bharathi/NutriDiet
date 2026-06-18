@@ -1,6 +1,7 @@
 import { createRequire } from "module";
 import { notificationPreferencesRepository } from "./notification-preferences.repository.js";
 import { notificationPreferencesMapper } from "./notification-preferences.mapper.js";
+import logger from "../../utils/logger.js";
 
 const require = createRequire(import.meta.url);
 const notificationSounds = require("../../config/notification-sounds.json");
@@ -22,12 +23,26 @@ export const notificationPreferencesService = {
     if (!stored) {
       // Auto-create default settings record in DB
       const created = await notificationPreferencesRepository.create(userId, SYSTEM_DEFAULTS);
+
+      logger.info("[NOTIFICATION_PREF_LOAD]", {
+        userId,
+        loadedSoundId: created.soundId,
+        source: "auto-created-defaults",
+      });
+
       return notificationPreferencesMapper.toDTO(created);
     }
 
     // Dynamic Preference Merging & Backward Compatibility Migration
     const merged = this.mergeAndMigratePreferences(stored);
-    
+
+    logger.info("[NOTIFICATION_PREF_LOAD]", {
+      userId,
+      storedSoundId: stored.soundId,
+      loadedSoundId: merged.soundId,
+      migrated: stored.soundId !== merged.soundId,
+    });
+
     // Auto-save migration results back to DB if soundId column was missing/uninitialized
     if (stored.soundId !== merged.soundId) {
       await notificationPreferencesRepository.update(userId, {
@@ -47,14 +62,21 @@ export const notificationPreferencesService = {
    */
   async updatePreferences(userId, data) {
     const stored = await notificationPreferencesRepository.findByUserId(userId);
-    
+
     // Flatten sounds list from registry to validate global sound selection
     const allSounds = Object.values(notificationSounds).flat();
-    
+
     let soundId = typeof data.soundId === "string" ? data.soundId : SYSTEM_DEFAULTS.soundId;
     const isValid = allSounds.some(s => s.id === soundId);
+
     if (!isValid) {
-      soundId = SYSTEM_DEFAULTS.soundId; // Fallback to default sound
+      logger.warn("[NOTIFICATION_PREF_SAVE] Invalid soundId rejected — falling back to default", {
+        userId,
+        incomingSoundId: soundId,
+        fallbackSoundId: SYSTEM_DEFAULTS.soundId,
+        validIds: allSounds.map(s => s.id),
+      });
+      soundId = SYSTEM_DEFAULTS.soundId;
     }
 
     const updateData = {
@@ -65,12 +87,28 @@ export const notificationPreferencesService = {
       soundId
     };
 
+    logger.info("[NOTIFICATION_PREF_SAVE]", {
+      userId,
+      incomingSoundId: data.soundId,
+      resolvedSoundId: soundId,
+      wasValid: isValid,
+      browserNotifications: updateData.browserNotifications,
+      inAppNotifications: updateData.inAppNotifications,
+      soundNotifications: updateData.soundNotifications,
+      soundVolume: updateData.soundVolume,
+    });
+
     let result;
     if (!stored) {
       result = await notificationPreferencesRepository.create(userId, updateData);
     } else {
       result = await notificationPreferencesRepository.update(userId, updateData);
     }
+
+    logger.info("[NOTIFICATION_PREF_SAVE] Persisted", {
+      userId,
+      savedSoundId: result.soundId,
+    });
 
     return notificationPreferencesMapper.toDTO(result);
   },

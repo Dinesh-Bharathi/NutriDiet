@@ -1,6 +1,8 @@
 import { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import fs from "fs";
+import path from "path";
+import { pipeline } from "stream/promises";
 import crypto from "crypto";
 
 export default class CloudflareR2Provider {
@@ -78,5 +80,23 @@ export default class CloudflareR2Provider {
       return getSignedUrl(this.client, command, { expiresIn: options.expiresIn || 3600 });
     }
     return `${this.publicUrl}/${key}`;
+  }
+
+  /**
+   * Download an object from R2 and write it to a local file path.
+   * Used by the voice transcoding pipeline to retrieve uploaded audio for FFmpeg.
+   *
+   * @param {string} key      - The object key (publicId)
+   * @param {string} destPath - Absolute local path to write the file to
+   * @returns {Promise<void>}
+   */
+  async downloadToFile(key, destPath) {
+    const command = new GetObjectCommand({
+      Bucket: this.bucketName,
+      Key: key,
+    });
+    const response = await this.client.send(command);
+    const writeStream = fs.createWriteStream(destPath);
+    await pipeline(response.Body, writeStream);
   }
 }
