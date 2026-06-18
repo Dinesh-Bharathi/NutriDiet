@@ -17,7 +17,7 @@ export const whatsappConnectionUpsertSchema = z.object({
 });
 
 export const whatsappMessageSendSchema = z.object({
-  type: z.enum(['TEXT', 'TEMPLATE', 'DOCUMENT', 'IMAGE', 'AUDIO', 'VIDEO', 'LOCATION']),
+  type: z.enum(['TEXT', 'TEMPLATE', 'DOCUMENT', 'IMAGE', 'AUDIO', 'VIDEO', 'LOCATION', 'VOICE']),
   body: z.string().trim().optional().nullable(),
   attachmentId: z.string().trim().optional().nullable(),
   attachmentIds: z.array(z.string().trim()).optional().nullable(),
@@ -30,6 +30,8 @@ export const whatsappMessageSendSchema = z.object({
   locationAddress: z.string().trim().optional().nullable(),
   replyToMessageId: z.string().trim().optional().nullable(),
   correlationId: z.string().trim().optional().nullable(),
+  mediaDurationSeconds: z.number().optional().nullable(),
+  waveformData: z.array(z.number()).optional().nullable(),
   
   // templates
   templateName: z.string().trim().optional().nullable(),
@@ -39,7 +41,7 @@ export const whatsappMessageSendSchema = z.object({
   if (data.type === 'TEXT' && !data.body) {
     return false;
   }
-  if (['IMAGE', 'VIDEO', 'AUDIO', 'DOCUMENT'].includes(data.type)) {
+  if (['IMAGE', 'VIDEO', 'AUDIO', 'DOCUMENT', 'VOICE'].includes(data.type)) {
     return !!(data.attachmentId || (data.attachmentIds && data.attachmentIds.length > 0) || data.mediaUrl);
   }
   if (data.type === 'LOCATION') {
@@ -53,4 +55,11 @@ export const whatsappMessageSendSchema = z.object({
 }, {
   message: "Invalid payload: missing type-specific required fields (body for TEXT, attachmentId/mediaUrl for media, latitude/longitude for LOCATION, templateName for TEMPLATE).",
 });
+
+export const whatsappGetMediaSchema = z.object({
+  type: z.enum(['media', 'document', 'audio', 'link']).optional(),
+  limit: z.string().regex(/^\d+$/).transform(Number).default('12').optional(),
+  cursor: z.string().optional(),
+});
+
 

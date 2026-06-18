@@ -103,3 +103,30 @@ export const deleteAsset = asyncHandler(async (req, res) => {
 
   return sendSuccess(res, 200, "Asset deleted successfully");
 });
+
+/**
+ * Stream asset directly to the browser (bypasses CORS restrictions)
+ * GET /api/v1/storage/:id/view
+ */
+export const viewAssetStream = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const tenantId = req.tenant.id;
+  const userId = req.user.userId;
+
+  const result = await storageService.getAssetAccessUrl(
+    id,
+    tenantId,
+    userId,
+    "VIEW",
+  );
+
+  const axios = (await import('axios')).default;
+  const response = await axios({
+    method: 'get',
+    url: result.accessUrl,
+    responseType: 'stream'
+  });
+
+  res.setHeader('Content-Type', result.asset.mimeType || 'application/pdf');
+  response.data.pipe(res);
+});

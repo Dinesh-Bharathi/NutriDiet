@@ -612,7 +612,7 @@ export const whatsappService = {
         replyToMetaMessageId
       );
       previewText = generatePreviewText('LOCATION', payload.locationName || payload.body);
-    } else if (['IMAGE', 'VIDEO', 'AUDIO', 'DOCUMENT'].includes(payload.type)) {
+    } else if (['IMAGE', 'VIDEO', 'AUDIO', 'DOCUMENT', 'VOICE'].includes(payload.type)) {
       const assetId = Array.isArray(payload.attachmentIds) ? payload.attachmentIds[0] : (payload.attachmentId || null);
       let asset = null;
       if (assetId) {
@@ -657,6 +657,8 @@ export const whatsappService = {
         mediaUrl,
         mediaFileName,
         storageFileId,
+        mediaDurationSeconds: payload.mediaDurationSeconds ? parseInt(payload.mediaDurationSeconds) : null,
+        interactivePayload: payload.waveformData ? { waveformData: payload.waveformData } : null,
         replyToMessageId,
         replyToMetaMessageId,
         replyPreviewText,
@@ -1408,6 +1410,199 @@ export const whatsappService = {
         total,
         totalPages: Math.ceil(total / limitNum),
       },
+    };
+  },
+
+  /**
+   * Get media gallery items for a conversation, including aggregate counts and unified DTO mapping.
+   *
+   * @param {string} tenantId
+   * @param {string} conversationId
+   * @param {object} query - type, limit, cursor
+   * @returns {Promise<object>}
+   */
+  async getConversationMedia(tenantId, conversationId, query) {
+    const { type, limit = 12, cursor } = query;
+    const limitNum = parseInt(limit, 10);
+
+    const baseWhere = {
+      tenantId,
+      conversationId,
+      deletedAt: null,
+    };
+
+    // Define categories queries
+    const getWhereForCategory = (cat) => {
+      if (cat === 'media') {
+        return {
+          ...baseWhere,
+          type: { in: ['IMAGE', 'VIDEO'] },
+          OR: [
+            { mediaUrl: { not: null } },
+            { attachments: { some: {} } },
+          ],
+        };
+      } else if (cat === 'document') {
+        return {
+          ...baseWhere,
+          type: 'DOCUMENT',
+          OR: [
+            { mediaUrl: { not: null } },
+            { attachments: { some: {} } },
+          ],
+        };
+      } else if (cat === 'audio') {
+        return {
+          ...baseWhere,
+          type: { in: ['AUDIO', 'VOICE'] },
+          OR: [
+            { mediaUrl: { not: null } },
+            { attachments: { some: {} } },
+          ],
+        };
+      } else if (cat === 'link') {
+        return {
+          ...baseWhere,
+          type: { in: ['TEXT', 'TEMPLATE'] },
+          OR: [
+            { body: { contains: 'http://' } },
+            { body: { contains: 'https://' } },
+            { body: { contains: 'www.' } },
+          ],
+        };
+      }
+      return baseWhere;
+    };
+
+    const extractLinks = (text) => {
+      if (!text) return [];
+      const regex = /(https?:\/\/[^\s]+|www\.[^\s]+)/gi;
+      const matches = text.match(regex) || [];
+      return matches.map(url => {
+        let normalized = url.replace(/[.,)\]]+$/, '');
+        if (normalized.toLowerCase().startsWith('www.')) {
+          normalized = 'https://' + normalized;
+        }
+        return normalized;
+      });
+    };
+
+    const mapToUnifiedDTO = (msg, overrideType = null, linkUrl = null) => {
+      let t = overrideType;
+      if (!t) {
+        if (msg.type === 'IMAGE' || msg.type === 'VIDEO') t = 'media';
+        else if (msg.type === 'DOCUMENT') t = 'document';
+        else if (msg.type === 'AUDIO' || msg.type === 'VOICE') t = 'audio';
+      }
+
+      const url = linkUrl || msg.mediaUrl || msg.attachments?.[0]?.url || '';
+      const fileName = linkUrl ? '' : (msg.mediaFileName || msg.attachments?.[0]?.fileName || 'File');
+      const fileSize = linkUrl ? null : (msg.mediaSize || msg.attachments?.[0]?.fileSize || null);
+      const mimeType = linkUrl ? 'text/html' : (msg.mediaMimeType || msg.attachments?.[0]?.mimeType || null);
+
+      return {
+        id: linkUrl ? `${msg.id}-${linkUrl}` : msg.id,
+        type: t,
+        mimeType,
+        url,
+        fileName,
+        fileSize,
+        senderName: msg.senderName || (msg.direction === 'INBOUND' ? 'Client' : 'Staff'),
+        dateShared: msg.createdAt,
+        mediaDurationSeconds: msg.mediaDurationSeconds || null,
+        previewText: linkUrl ? msg.body : null,
+        storageFileId: msg.storageFileId || msg.attachments?.[0]?.id || null,
+        isVoice: msg.type === 'VOICE'
+      };
+    };
+
+    const fetchCategoryItems = async (cat, catCursor) => {
+      const whereClause = getWhereForCategory(cat);
+      const findParams = {
+        where: whereClause,
+        take: limitNum + 1,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          attachments: {
+            select: {
+              id: true,
+              fileName: true,
+              mimeType: true,
+              fileSize: true,
+              url: true,
+              secureUrl: true,
+            },
+          },
+        },
+      };
+
+      if (catCursor) {
+        findParams.cursor = { id: catCursor };
+        findParams.skip = 1;
+      }
+
+      const messages = await prisma.whatsAppMessage.findMany(findParams);
+
+      let nextCursor = null;
+      if (messages.length > limitNum) {
+        const nextItem = messages.pop();
+        nextCursor = nextItem.id;
+      }
+
+      let items = [];
+      if (cat === 'link') {
+        for (const msg of messages) {
+          const links = extractLinks(msg.body);
+          for (const url of links) {
+            items.push(mapToUnifiedDTO(msg, 'link', url));
+          }
+        }
+      } else {
+        items = messages.map(msg => mapToUnifiedDTO(msg));
+      }
+
+      return { items, nextCursor };
+    };
+
+    // Calculate aggregate counts for all tabs using prisma.count
+    const [mediaCount, documentCount, audioCount, linkCount] = await Promise.all([
+      prisma.whatsAppMessage.count({ where: getWhereForCategory('media') }),
+      prisma.whatsAppMessage.count({ where: getWhereForCategory('document') }),
+      prisma.whatsAppMessage.count({ where: getWhereForCategory('audio') }),
+      prisma.whatsAppMessage.count({ where: getWhereForCategory('link') }),
+    ]);
+
+    const counts = {
+      media: mediaCount,
+      document: documentCount,
+      audio: audioCount,
+      link: linkCount,
+    };
+
+    // If specific type is requested, return pagination just for that type
+    if (type) {
+      const result = await fetchCategoryItems(type, cursor);
+      return {
+        counts,
+        items: result.items,
+        nextCursor: result.nextCursor,
+      };
+    }
+
+    // Otherwise, fetch initial page for all categories
+    const [mediaRes, docRes, audioRes, linkRes] = await Promise.all([
+      fetchCategoryItems('media'),
+      fetchCategoryItems('document'),
+      fetchCategoryItems('audio'),
+      fetchCategoryItems('link'),
+    ]);
+
+    return {
+      counts,
+      media: mediaRes.items,
+      document: docRes.items,
+      audio: audioRes.items,
+      link: linkRes.items,
     };
   },
 };

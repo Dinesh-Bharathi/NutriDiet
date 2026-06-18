@@ -2,7 +2,7 @@ import crypto from 'crypto';
 import env from '../../config/env.js';
 import logger from '../../utils/logger.js';
 import { whatsappService, AppError } from './whatsapp.service.js';
-import { whatsappConnectionUpsertSchema, whatsappMessageSendSchema } from './whatsapp.validation.js';
+import { whatsappConnectionUpsertSchema, whatsappMessageSendSchema, whatsappGetMediaSchema } from './whatsapp.validation.js';
 import { sendSuccess } from '../../utils/ApiResponse.js';
 import { HTTP_STATUS } from '../../config/constants.js';
 import prisma from '../../lib/prisma.js';
@@ -107,6 +107,24 @@ export const whatsappController = {
       res,
       HTTP_STATUS.OK,
       'Messages retrieved successfully',
+      result
+    );
+  },
+
+  /**
+   * GET /api/v1/whatsapp/conversations/:id/media
+   * Get media gallery items for a specific conversation (paginated).
+   */
+  async getConversationMedia(req, res) {
+    const tenantId = req.user.tenantId;
+    const conversationId = req.params.id;
+    const validatedQuery = whatsappGetMediaSchema.parse(req.query);
+    const result = await whatsappService.getConversationMedia(tenantId, conversationId, validatedQuery);
+    
+    return sendSuccess(
+      res,
+      HTTP_STATUS.OK,
+      'Media retrieved successfully',
       result
     );
   },

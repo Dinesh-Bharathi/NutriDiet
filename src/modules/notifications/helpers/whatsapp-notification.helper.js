@@ -93,7 +93,9 @@ export function buildWhatsAppNotificationPayload({
   const { label, preview } = buildTypeLabel(mappedType, previewText, { mediaFileName });
 
   // Notification title e.g. "New WhatsApp message from John Doe"
-  const title = `New WhatsApp message from ${clientName}`;
+  const title = mappedType === 'VOICE'
+    ? `New voice note from ${clientName}`
+    : `New WhatsApp message from ${clientName}`;
 
   // Notification preview, truncated for badge display
   const messagePreview = (label || preview || 'New message').slice(0, PREVIEW_MAX_LENGTH);

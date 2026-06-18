@@ -30,11 +30,16 @@ import { REDIS_KEY_PREFIX } from "../modules/auth/auth.constants.js";
  */
 function extractBearerToken(req) {
   const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    return null;
+  if (authHeader && authHeader.startsWith("Bearer ")) {
+    return authHeader.slice(7).trim() || null;
   }
-  return authHeader.slice(7).trim() || null;
+  // Fallback to query parameter token for cases like streaming files
+  if (req.query && req.query.token) {
+    return req.query.token;
+  }
+  return null;
 }
+
 
 /**
  * Verifies an access JWT, checks the Redis jti blocklist, then populates req.user.

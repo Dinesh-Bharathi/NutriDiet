@@ -101,6 +101,13 @@ router.get(
   asyncHandler(whatsappController.getMessages)
 );
 
+// GET media, documents, audio, links in a conversation (ASSISTANT or higher)
+router.get(
+  '/conversations/:id/media',
+  requireMinRole(ROLES.ASSISTANT),
+  asyncHandler(whatsappController.getConversationMedia)
+);
+
 // POST send message in a conversation (ASSISTANT or higher)
 router.post(
   '/conversations/:id/messages',

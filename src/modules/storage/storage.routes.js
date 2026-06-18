@@ -41,8 +41,11 @@ router.get("/:id", storageController.getAsset);
 router.get("/:id/access", storageController.getAssetAccessUrl);
 router.get(
   "/:id/download",
-  storageController.getAssetAccessUrl, // Handled by the same logic, or can be aliased
+  storageController.getAssetAccessUrl,
 );
+
+// Stream asset directly to client to bypass CORS
+router.get("/:id/view", storageController.viewAssetStream);
 
 // Delete an asset
 router.delete("/:id", storageController.deleteAsset);
