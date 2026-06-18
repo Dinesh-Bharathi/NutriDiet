@@ -110,7 +110,12 @@ export function initSocketServer(server) {
   
     tenantNamespace.on("connection", (socket) => {
       socket.connectedAt = Date.now();
-      logger.info(`[WHATSAPP_SOCKET] Connected: socketId=${socket.id}, tenantId=${socket.tenantId}, userId=${socket.user.id}`, {
+      
+      // Join a user-specific room inside the tenant namespace for secure user-isolated notifications
+      const userRoom = `user-${socket.user.id}`;
+      socket.join(userRoom);
+
+      logger.info(`[WHATSAPP_SOCKET] Connected: socketId=${socket.id}, tenantId=${socket.tenantId}, userId=${socket.user.id}, room=${userRoom}`, {
         userId: socket.user.id,
         tenantId: socket.tenantId,
         socketId: socket.id,
@@ -155,6 +160,29 @@ export function initSocketServer(server) {
     ioInstance.of(`/tenant-${tenantId}`).emit(event, data);
   }
 
+  /**
+   * Safely emit a real-time event to a specific user within a tenant workspace.
+   *
+   * @param {string} tenantId
+   * @param {string} userId
+   * @param {string} event
+   * @param {any} data
+   */
+  export function emitUserEvent(tenantId, userId, event, data) {
+    if (!ioInstance) {
+      logger.warn(`[SOCKET] Server not initialized. Skipped user broadcast: ${event}`);
+      return;
+    }
+
+    logger.info("[SOCKET] User socket broadcast emitted", {
+      eventName: event,
+      tenantId,
+      userId,
+    });
+
+    ioInstance.of(`/tenant-${tenantId}`).to(`user-${userId}`).emit(event, data);
+  }
+ 
   /**
    * Retrieve active connection counts for a specific tenant workspace.
    *

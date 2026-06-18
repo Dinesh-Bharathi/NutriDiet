@@ -206,6 +206,7 @@ model Tenant {
   whatsAppConnection          WhatsAppConnection?
   whatsAppConversations       WhatsAppConversation[]
   whatsAppMessages            WhatsAppMessage[]
+  notifications               Notification[]
 
   @@index([slug])
   @@index([status])
@@ -255,6 +256,7 @@ model User {
   generatedAssessmentSnapshots AssessmentSnapshot[]      @relation("AssessmentSnapshotGenerator")
   uploadedFiles                FileAsset[]               @relation("FileUploader")
   whatsAppMessages             WhatsAppMessage[]
+  notifications                Notification[]
 
   // Compound unique: email must be unique within a tenant (not globally)
   @@unique([tenantId, email])
@@ -1712,6 +1714,35 @@ model WhatsAppReaction {
   @@index([tenantId])
   @@index([messageId])
   @@map("whatsapp_reactions")
+}
+
+model Notification {
+  id         String   @id @default(cuid())
+  tenantId   String
+  userId     String
+  type       String
+  title      String
+  message    String
+  entityType String?
+  entityId   String?
+  priority   String   @default("NORMAL")
+  actionUrl  String?
+  metadata   Json?
+  isRead     Boolean  @default(false)
+  readAt     DateTime?
+  isArchived Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  // Relations
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  user   User   @relation(fields: [userId], references: [id])
+
+  @@index([tenantId, userId])
+  @@index([tenantId, userId, isRead])
+  @@index([tenantId, userId, isArchived])
+  @@index([createdAt])
+  @@map("notifications")
 }
 
 

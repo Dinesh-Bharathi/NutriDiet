@@ -6,6 +6,12 @@ import { logWhatsApp, logWhatsAppVerbose } from "./whatsapp-logger.js";
 import { decrypt } from "../../utils/encryption.js";
 import { mediaService } from "./services/media.service.js";
 import { whatsappService, generatePreviewText } from "./whatsapp.service.js";
+import { notificationService } from "../notifications/notification.service.js";
+import { NOTIFIABLE_WHATSAPP_MESSAGE_TYPES } from "../notifications/notification.constants.js";
+import {
+  buildWhatsAppNotificationPayload,
+  resolveWhatsAppNotificationRecipients,
+} from "../notifications/helpers/whatsapp-notification.helper.js";
 
 export const whatsappWebhookService = {
   /**
@@ -674,6 +680,18 @@ export const whatsappWebhookService = {
 
             logWhatsApp('[WHATSAPP_SOCKET] Inbound message broadcasted', { tenantId, messageId: savedMessage.id });
             emitTenantEvent(tenantId, "whatsapp:conversation_update", updatedConv);
+
+            // Create in-app notifications for recipients — fully isolated from message processing.
+            // Failures here must never throw or abort the webhook loop.
+            await whatsappWebhookService._createWhatsAppNotifications({
+              tenantId,
+              client,
+              savedMessage,
+              conversation,
+              mappedType,
+              previewText,
+              wamid,
+            });
           }
         }
       }
@@ -738,5 +756,158 @@ export const whatsappWebhookService = {
       duration,
       tenantId: tenantIdResolved,
     };
+  },
+
+  // ─── Private: WhatsApp Notification Fan-Out ──────────────────────────────
+
+  /**
+   * Creates in-app notifications for all resolved recipients of an inbound
+   * WhatsApp message. Handles Redis idempotency, deduplication, payload
+   * building, and Redis metric counters.
+   *
+   * This method is completely isolated: any failure is caught and logged,
+   * and will never affect message persistence or webhook processing.
+   *
+   * @param {object} params
+   * @param {string}  params.tenantId       - Tenant ID
+   * @param {object}  params.client         - Matched client record { id, firstName, lastName }
+   * @param {object}  params.savedMessage   - Persisted WhatsAppMessage record
+   * @param {object}  params.conversation   - WhatsAppConversation record
+   * @param {string}  params.mappedType     - Normalized message type ('TEXT', 'IMAGE', etc.)
+   * @param {string}  params.previewText    - Server-generated preview text
+   * @param {string}  params.wamid          - Meta message ID (for idempotency key)
+   * @returns {Promise<void>}
+   */
+  async _createWhatsAppNotifications({
+    tenantId,
+    client,
+    savedMessage,
+    conversation,
+    mappedType,
+    previewText,
+    wamid,
+  }) {
+    try {
+      // Guard: skip non-notifiable message types (reactions, system, etc.)
+      if (!NOTIFIABLE_WHATSAPP_MESSAGE_TYPES.has(mappedType)) {
+        logWhatsApp(
+          '[WHATSAPP_NOTIFY]',
+          { tenantId, messageId: savedMessage.id },
+          `Skipping notification for non-notifiable type: ${mappedType}`,
+          'debug',
+        );
+        return;
+      }
+
+      const redis = getRedisClient();
+      const clientName = `${client.firstName} ${client.lastName}`;
+
+      // Resolve recipient user IDs: OWNER + ADMIN + assigned Dietitian, deduplicated.
+      const recipientIds = await resolveWhatsAppNotificationRecipients(tenantId, client.id);
+
+      if (recipientIds.length === 0) {
+        logWhatsApp(
+          '[WHATSAPP_NOTIFY]',
+          { tenantId, messageId: savedMessage.id },
+          'No recipients resolved for WhatsApp notification. Skipping.',
+          'warn',
+        );
+        return;
+      }
+
+      logWhatsApp(
+        '[WHATSAPP_NOTIFY]',
+        { tenantId, messageId: savedMessage.id },
+        `Resolved ${recipientIds.length} notification recipient(s): [${recipientIds.join(', ')}]`,
+      );
+
+      let delivered = 0;
+      let failed = 0;
+
+      for (const userId of recipientIds) {
+        try {
+          // ── Redis idempotency check ──────────────────────────────────────
+          // Key format: notification:whatsapp:msg:{wamid}:{userId}
+          // TTL: 86400s (24 h) — survives webhook replay and BullMQ retries.
+          const idempotencyKey = `notification:whatsapp:msg:${wamid}:${userId}`;
+
+          if (redis) {
+            const seen = await redis.get(idempotencyKey);
+            if (seen) {
+              logWhatsApp(
+                '[WHATSAPP_NOTIFY]',
+                { tenantId, userId, wamid },
+                `Duplicate notification suppressed (idempotency key hit): ${idempotencyKey}`,
+                'debug',
+              );
+              continue;
+            }
+          }
+
+          // ── Build payload ────────────────────────────────────────────────
+          const payload = buildWhatsAppNotificationPayload({
+            userId,
+            clientName,
+            clientId: client.id,
+            conversationId: conversation.id,
+            messageId: savedMessage.id,
+            mappedType,
+            previewText,
+            mediaFileName: savedMessage.mediaFileName || null,
+          });
+
+          // ── Create notification (persists + emits socket events) ─────────
+          await notificationService.createNotification(tenantId, payload);
+
+          // ── Mark idempotency key AFTER successful creation ────────────────
+          if (redis) {
+            await redis.set(idempotencyKey, '1', 'EX', 86400);
+          }
+
+          // ── Metrics: created + delivered ─────────────────────────────────
+          if (redis) {
+            await redis.incr('notification:created');
+            await redis.incr('notification:delivered');
+            await redis.incr('notification:whatsapp_created');
+          }
+
+          delivered++;
+
+          logWhatsApp(
+            '[WHATSAPP_NOTIFY]',
+            { tenantId, userId, messageId: savedMessage.id },
+            `Notification created and delivered for userId=${userId}`,
+          );
+        } catch (perUserErr) {
+          // Per-user failure must not abort other recipients
+          failed++;
+
+          if (redis) {
+            await redis.incr('notification:failed').catch(() => {});
+          }
+
+          logWhatsApp(
+            '[WHATSAPP_NOTIFY]',
+            { tenantId, userId, messageId: savedMessage.id },
+            `Failed to create notification for userId=${userId}: ${perUserErr.message}`,
+            'error',
+          );
+        }
+      }
+
+      logWhatsApp(
+        '[WHATSAPP_NOTIFY]',
+        { tenantId, messageId: savedMessage.id },
+        `Notification fan-out complete: delivered=${delivered}, failed=${failed}, total=${recipientIds.length}`,
+      );
+    } catch (err) {
+      // Top-level guard: notification failure must NEVER propagate up.
+      logWhatsApp(
+        '[WHATSAPP_NOTIFY]',
+        { tenantId, messageId: savedMessage?.id },
+        `Notification system error (non-fatal): ${err.message}`,
+        'error',
+      );
+    }
   },
 };
