@@ -359,8 +359,13 @@ export const whatsappService = {
       where: whereClause,
       take: limitNum + 1,
       orderBy: [
-        { lastMessageAt: 'desc' },
-        { id: 'desc' }
+        {
+          lastMessageAt: {
+            sort: 'desc',
+            nulls: 'last',
+          },
+        },
+        { id: 'desc' },
       ],
       include: {
         client: {

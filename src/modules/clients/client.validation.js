@@ -85,6 +85,7 @@ export const queryClientsSchema = z.object({
     status: statusEnum.optional(),
     onboardingStatus: onboardingStatusEnum.optional(),
     dietitianId: z.string().optional(),
+    sortBy: z.string().optional(),
   }),
 });
 

@@ -5,6 +5,8 @@ import prisma from '../../lib/prisma.js';
 import ApiError from '../../utils/ApiError.js';
 import { Role } from '@prisma/client';
 import * as storageService from '../storage/storage.service.js';
+import { getRedisClient } from '../../lib/redis.js';
+import logger from '../../utils/logger.js';
 
 export const clientService = {
   /**
@@ -112,6 +114,51 @@ export const clientService = {
       filters,
       pagination
     );
+
+    // If sorting by lastActiveMessage, attach presence from Redis:
+    if (filters.sortBy === 'lastActiveMessage' && clients.length > 0) {
+      const redis = getRedisClient();
+      const lastSeenMap = new Map();
+      
+      const convs = clients.map(c => c.whatsAppConversations?.[0]).filter(Boolean);
+      if (redis && convs.length > 0) {
+        try {
+          const keys = convs.map(c => `whatsapp:client:last_seen:${c.id}`);
+          const values = await redis.mget(keys);
+          convs.forEach((c, idx) => {
+            if (values[idx]) {
+              lastSeenMap.set(c.id, parseInt(values[idx], 10));
+            }
+          });
+        } catch (err) {
+          logger.error("[Client Service] Redis mget last_seen error", { error: err.message });
+        }
+      }
+
+      const now = Date.now();
+      clients.forEach(c => {
+        const conv = c.whatsAppConversations?.[0];
+        if (conv) {
+          let resolvedLastSeen = lastSeenMap.get(conv.id) || null;
+          const fallbackTime = conv.lastMessageAt || conv.lastInboundAt || conv.lastOutboundAt || conv.createdAt;
+          if (resolvedLastSeen === null && fallbackTime) {
+            resolvedLastSeen = new Date(fallbackTime).getTime();
+          }
+          const online = resolvedLastSeen ? (now - resolvedLastSeen < 5 * 60 * 1000) : false;
+          const lastSeenAt = resolvedLastSeen ? new Date(resolvedLastSeen).toISOString() : null;
+          
+          c.clientPresence = {
+            online,
+            lastSeenAt,
+          };
+        } else {
+          c.clientPresence = {
+            online: false,
+            lastSeenAt: null,
+          };
+        }
+      });
+    }
 
     return {
       clients,

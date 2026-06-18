@@ -33,6 +33,7 @@ export const clientController = {
       status: req.query.status,
       onboardingStatus: req.query.onboardingStatus,
       dietitianId: req.query.dietitianId,
+      sortBy: req.query.sortBy,
     };
     const pagination = {
       page: req.query.page,
