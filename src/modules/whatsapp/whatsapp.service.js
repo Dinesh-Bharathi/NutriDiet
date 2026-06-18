@@ -305,10 +305,13 @@ export const whatsappService = {
             phone: true,
           },
         },
+        _count: {
+          select: { messages: true }
+        }
       },
     });
 
-    return conversation;
+    return this.toConversationResponseDTO(conversation);
   },
 
   /**
@@ -365,6 +368,9 @@ export const whatsappService = {
             phone: true,
           },
         },
+        _count: {
+          select: { messages: true }
+        }
       },
     };
 
@@ -381,8 +387,33 @@ export const whatsappService = {
       nextCursor = nextItem.id;
     }
 
+    // Bulk fetch client last-seen times from Redis
+    const redis = getRedisClient();
+    const lastSeenMap = new Map();
+    if (redis && conversations.length > 0) {
+      try {
+        const keys = conversations.map(c => `whatsapp:client:last_seen:${c.id}`);
+        const values = await redis.mget(keys);
+        conversations.forEach((c, idx) => {
+          if (values[idx]) {
+            lastSeenMap.set(c.id, parseInt(values[idx], 10));
+          }
+        });
+      } catch (err) {
+        logger.error("[WhatsApp Service] Redis mget last_seen error", { error: err.message });
+      }
+    }
+
+    const now = Date.now();
+    const mappedConversations = [];
+    for (const c of conversations) {
+      const lastSeen = lastSeenMap.get(c.id);
+      const dto = await this.toConversationResponseDTO(c, lastSeen, now);
+      mappedConversations.push(dto);
+    }
+
     return {
-      conversations,
+      conversations: mappedConversations,
       nextCursor,
     };
   },
@@ -697,6 +728,9 @@ export const whatsappService = {
               phone: true,
             },
           },
+          _count: {
+            select: { messages: true }
+          }
         },
       });
 
@@ -706,8 +740,10 @@ export const whatsappService = {
         receiptHistory: [],
       };
 
+      const dto = await this.toConversationResponseDTO(updatedConv);
+
       emitTenantEvent(tenantId, 'whatsapp:message_new', messageDto);
-      emitTenantEvent(tenantId, 'whatsapp:conversation_update', updatedConv);
+      emitTenantEvent(tenantId, 'whatsapp:conversation_update', dto);
 
       return messageDto;
     } catch (err) {
@@ -813,10 +849,24 @@ export const whatsappService = {
     const updated = await prisma.whatsAppConversation.update({
       where: { id: conversationId },
       data: { unreadCount: 0 },
+      include: {
+        client: {
+          select: {
+            firstName: true,
+            lastName: true,
+            avatarAssetId: true,
+            phone: true,
+          },
+        },
+        _count: {
+          select: { messages: true }
+        }
+      },
     });
 
-    emitTenantEvent(tenantId, 'whatsapp:conversation_update', updated);
-    return updated;
+    const dto = await this.toConversationResponseDTO(updated);
+    emitTenantEvent(tenantId, 'whatsapp:conversation_update', dto);
+    return dto;
   },
 
   /**
@@ -995,9 +1045,23 @@ export const whatsappService = {
     const updated = await prisma.whatsAppConversation.update({
       where: { id: conversationId },
       data: { isArchived: archived },
+      include: {
+        client: {
+          select: {
+            firstName: true,
+            lastName: true,
+            avatarAssetId: true,
+            phone: true,
+          },
+        },
+        _count: {
+          select: { messages: true }
+        }
+      },
     });
-    emitTenantEvent(tenantId, 'whatsapp:conversation_update', updated);
-    return updated;
+    const dto = await this.toConversationResponseDTO(updated);
+    emitTenantEvent(tenantId, 'whatsapp:conversation_update', dto);
+    return dto;
   },
 
   /**
@@ -1007,9 +1071,23 @@ export const whatsappService = {
     const updated = await prisma.whatsAppConversation.update({
       where: { id: conversationId },
       data: { isMuted: muted },
+      include: {
+        client: {
+          select: {
+            firstName: true,
+            lastName: true,
+            avatarAssetId: true,
+            phone: true,
+          },
+        },
+        _count: {
+          select: { messages: true }
+        }
+      },
     });
-    emitTenantEvent(tenantId, 'whatsapp:conversation_update', updated);
-    return updated;
+    const dto = await this.toConversationResponseDTO(updated);
+    emitTenantEvent(tenantId, 'whatsapp:conversation_update', dto);
+    return dto;
   },
 
   /**
@@ -1022,9 +1100,23 @@ export const whatsappService = {
         optInStatus: status,
         optInCapturedAt: status ? new Date() : null,
       },
+      include: {
+        client: {
+          select: {
+            firstName: true,
+            lastName: true,
+            avatarAssetId: true,
+            phone: true,
+          },
+        },
+        _count: {
+          select: { messages: true }
+        }
+      },
     });
-    emitTenantEvent(tenantId, 'whatsapp:conversation_update', updated);
-    return updated;
+    const dto = await this.toConversationResponseDTO(updated);
+    emitTenantEvent(tenantId, 'whatsapp:conversation_update', dto);
+    return dto;
   },
 
   /**
@@ -1119,6 +1211,63 @@ export const whatsappService = {
   },
 
   /**
+   * Map database WhatsAppConversation to response DTO including client presence.
+   */
+  async toConversationResponseDTO(conv, lastSeenTime = null, now = Date.now()) {
+    if (!conv) return null;
+    
+    let resolvedLastSeen = lastSeenTime;
+    if (resolvedLastSeen === null) {
+      const redis = getRedisClient();
+      if (redis) {
+        try {
+          const val = await redis.get(`whatsapp:client:last_seen:${conv.id}`);
+          if (val) {
+            resolvedLastSeen = parseInt(val, 10);
+          }
+        } catch (err) {
+          logger.error("[WhatsApp Service] Redis get last_seen error", { error: err.message });
+        }
+      }
+    }
+    
+    const fallbackTime = conv.lastMessageAt || conv.lastInboundAt || conv.lastOutboundAt || conv.createdAt;
+    if (resolvedLastSeen === null && fallbackTime) {
+      resolvedLastSeen = new Date(fallbackTime).getTime();
+    }
+    
+    const online = resolvedLastSeen ? (now - resolvedLastSeen < 5 * 60 * 1000) : false;
+    const lastSeenAt = resolvedLastSeen ? new Date(resolvedLastSeen).toISOString() : null;
+    
+    return {
+      id: conv.id,
+      tenantId: conv.tenantId,
+      clientId: conv.clientId,
+      optInStatus: conv.optInStatus,
+      optInCapturedAt: conv.optInCapturedAt ? conv.optInCapturedAt.toISOString() : null,
+      lastMessageId: conv.lastMessageId,
+      lastMessageText: conv.lastMessageText,
+      lastMessageAt: conv.lastMessageAt ? conv.lastMessageAt.toISOString() : null,
+      unreadCount: conv.unreadCount,
+      isArchived: conv.isArchived,
+      isMuted: conv.isMuted,
+      conversationStartedAt: conv.conversationStartedAt ? conv.conversationStartedAt.toISOString() : null,
+      lastInboundAt: conv.lastInboundAt ? conv.lastInboundAt.toISOString() : null,
+      lastOutboundAt: conv.lastOutboundAt ? conv.lastOutboundAt.toISOString() : null,
+      lastClientMessageAt: conv.lastClientMessageAt ? conv.lastClientMessageAt.toISOString() : null,
+      lastPractitionerMessageAt: conv.lastPractitionerMessageAt ? conv.lastPractitionerMessageAt.toISOString() : null,
+      createdAt: conv.createdAt.toISOString(),
+      updatedAt: conv.updatedAt.toISOString(),
+      client: conv.client,
+      messagesCount: conv._count?.messages ?? 0,
+      clientPresence: {
+        online,
+        lastSeenAt,
+      },
+    };
+  },
+
+  /**
    * Search messages and group them under conversations.
    * Scopes to tenant and groups matches.
    *
@@ -1193,6 +1342,38 @@ export const whatsappService = {
     const total = allResults.length;
     const skip = (pageNum - 1) * limitNum;
     const paginatedResults = allResults.slice(skip, skip + limitNum);
+
+    // Bulk fetch client last-seen times from Redis for search results
+    const redis = getRedisClient();
+    const lastSeenMap = new Map();
+    const resultConvIds = paginatedResults.map(r => r.conversationId);
+    if (redis && resultConvIds.length > 0) {
+      try {
+        const keys = resultConvIds.map(id => `whatsapp:client:last_seen:${id}`);
+        const values = await redis.mget(keys);
+        resultConvIds.forEach((id, idx) => {
+          if (values[idx]) {
+            lastSeenMap.set(id, parseInt(values[idx], 10));
+          }
+        });
+      } catch (err) {
+        logger.error("[WhatsApp Service] Redis mget last_seen error", { error: err.message });
+      }
+    }
+
+    const now = Date.now();
+    for (const r of paginatedResults) {
+      const lastSeen = lastSeenMap.get(r.conversationId);
+      const fallbackTime = r.createdAt;
+      const resolvedLastSeen = lastSeen || (fallbackTime ? new Date(fallbackTime).getTime() : null);
+      const online = resolvedLastSeen ? (now - resolvedLastSeen < 5 * 60 * 1000) : false;
+      const lastSeenAt = resolvedLastSeen ? new Date(resolvedLastSeen).toISOString() : null;
+      
+      r.clientPresence = {
+        online,
+        lastSeenAt
+      };
+    }
 
     return {
       results: paginatedResults,

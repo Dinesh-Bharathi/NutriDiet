@@ -200,6 +200,9 @@ export const whatsappWebhookService = {
               if (mappedStatus === "READ") {
                 convUpdate.lastPractitionerMessageAt = timestamp;
                 convUpdate.lastOutboundAt = timestamp;
+                if (redis) {
+                  await redis.set(`whatsapp:client:last_seen:${message.conversationId}`, String(Date.now()));
+                }
               }
 
               await prisma.whatsAppConversation.update({
@@ -646,6 +649,7 @@ export const whatsappWebhookService = {
 
             if (redis) {
               await redis.set(`whatsapp:correlation:local:${savedMessage.id}`, correlationId, 'EX', 604800);
+              await redis.set(`whatsapp:client:last_seen:${conversation.id}`, String(Date.now()));
             }
 
             // Update conversation last messageDetails.
@@ -670,6 +674,9 @@ export const whatsappWebhookService = {
                     phone: true,
                   },
                 },
+                _count: {
+                  select: { messages: true }
+                }
               },
             });
 
@@ -681,10 +688,12 @@ export const whatsappWebhookService = {
               receiptHistory,
             };
 
+            const convDto = await whatsappService.toConversationResponseDTO(updatedConv);
+
             emitTenantEvent(tenantId, "whatsapp:message_new", messageDto);
 
             logWhatsApp('[WHATSAPP_SOCKET] Inbound message broadcasted', { tenantId, messageId: savedMessage.id });
-            emitTenantEvent(tenantId, "whatsapp:conversation_update", updatedConv);
+            emitTenantEvent(tenantId, "whatsapp:conversation_update", convDto);
 
             // Create in-app notifications for recipients — fully isolated from message processing.
             // Failures here must never throw or abort the webhook loop.

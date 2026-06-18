@@ -4,6 +4,7 @@ import env from "../config/env.js";
 import logger from "../utils/logger.js";
 import prisma from "./prisma.js";
 import getRedisClient from "./redis.js";
+import { PresenceStore } from "./presence.js";
 
 let ioInstance = null;
 
@@ -110,22 +111,66 @@ export function initSocketServer(server) {
       }
     });
   
-    tenantNamespace.on("connection", (socket) => {
+    tenantNamespace.on("connection", async (socket) => {
       socket.connectedAt = Date.now();
       
       // Join a user-specific room inside the tenant namespace for secure user-isolated notifications
       const userRoom = `user-${socket.user.id}`;
       socket.join(userRoom);
 
-      // Handle user presence tracking for smart notification suppression
-      socket.on("presence", (data) => {
+      // Register socket connection in PresenceStore
+      await PresenceStore.registerConnection(socket.id, socket.user.id, socket.tenantId).catch((err) => {
+        logger.error("[Presence] Failed to register connection on socket.io connect", { error: err.message });
+      });
+
+      // Broadcast user online status
+      socket.nsp.emit("presence:update", {
+        userId: socket.user.id,
+        tenantId: socket.tenantId,
+        activeConversationId: null,
+        isOnline: true,
+      });
+
+      // Handle user presence tracking for smart notification suppression and online DTO updates
+      socket.on("presence", async (data) => {
         const { conversationId, active } = data || {};
         if (active && conversationId) {
           socket.presenceConversationId = conversationId;
           socket.presenceLastSeenAt = Date.now();
+          await PresenceStore.registerHeartbeat(socket.id, socket.user.id, conversationId).catch(() => {});
         } else {
           socket.presenceConversationId = null;
           socket.presenceLastSeenAt = null;
+          await PresenceStore.registerHeartbeat(socket.id, socket.user.id, null).catch(() => {});
+        }
+
+        // Broadcast updated presence details
+        socket.nsp.emit("presence:update", {
+          userId: socket.user.id,
+          tenantId: socket.tenantId,
+          activeConversationId: socket.presenceConversationId,
+          isOnline: true,
+        });
+      });
+
+      // Handle typing events
+      socket.on("typing:start", (data) => {
+        const { conversationId } = data || {};
+        if (conversationId) {
+          socket.broadcast.emit("typing:start", {
+            conversationId,
+            userId: socket.user.id,
+          });
+        }
+      });
+
+      socket.on("typing:stop", (data) => {
+        const { conversationId } = data || {};
+        if (conversationId) {
+          socket.broadcast.emit("typing:stop", {
+            conversationId,
+            userId: socket.user.id,
+          });
         }
       });
 
@@ -136,7 +181,7 @@ export function initSocketServer(server) {
         namespace: socket.nsp.name,
       });
   
-      socket.on("disconnect", (reason) => {
+      socket.on("disconnect", async (reason) => {
         const duration = Date.now() - (socket.connectedAt || Date.now());
         logger.info(`[WHATSAPP_SOCKET] Disconnected: socketId=${socket.id}, tenantId=${socket.tenantId}, reason=${reason}, duration=${duration}ms`, {
           userId: socket.user.id,
@@ -145,6 +190,28 @@ export function initSocketServer(server) {
           reason,
           duration,
         });
+
+        // Unregister presence
+        await PresenceStore.registerDisconnect(socket.id, socket.user.id).catch(() => {});
+
+        // Broadcast presence update (offline) if no other tabs are active
+        const isOnline = await PresenceStore.isUserOnline(socket.user.id).catch(() => false);
+        if (!isOnline) {
+          socket.nsp.emit("presence:update", {
+            userId: socket.user.id,
+            tenantId: socket.tenantId,
+            activeConversationId: null,
+            isOnline: false,
+          });
+        }
+
+        // Disconnect cleanup: clear typing state if typing
+        if (socket.presenceConversationId) {
+          socket.broadcast.emit("typing:stop", {
+            conversationId: socket.presenceConversationId,
+            userId: socket.user.id,
+          });
+        }
       });
     });
   
