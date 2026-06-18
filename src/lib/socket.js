@@ -13,6 +13,8 @@ export function initSocketServer(server) {
       origin: env.CLIENT_URL.split(","),
       credentials: true,
     },
+    pingInterval: 60000,
+    pingTimeout: 60000,
   });
 
   // Setup dynamic tenant namespaces: /tenant-{tenantId}
