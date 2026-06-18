@@ -679,7 +679,7 @@ export const whatsappService = {
 
       logWhatsApp('[WHATSAPP_SEND]', { correlationId, messageId: createdMsg.id, metaMessageId: wamid, tenantId }, `Message Status Transition: QUEUED -> SENT`);
 
-      await prisma.whatsAppConversation.update({
+      const updatedConv = await prisma.whatsAppConversation.update({
         where: { id: conversationId },
         data: {
           lastMessageId: updated.id,
@@ -687,6 +687,16 @@ export const whatsappService = {
           lastMessageAt: new Date(),
           lastOutboundAt: new Date(),
           lastPractitionerMessageAt: new Date(),
+        },
+        include: {
+          client: {
+            select: {
+              firstName: true,
+              lastName: true,
+              avatarAssetId: true,
+              phone: true,
+            },
+          },
         },
       });
 
@@ -697,6 +707,7 @@ export const whatsappService = {
       };
 
       emitTenantEvent(tenantId, 'whatsapp:message_new', messageDto);
+      emitTenantEvent(tenantId, 'whatsapp:conversation_update', updatedConv);
 
       return messageDto;
     } catch (err) {
@@ -1106,4 +1117,92 @@ export const whatsappService = {
       updatedAt: model.updatedAt.toISOString(),
     };
   },
+
+  /**
+   * Search messages and group them under conversations.
+   * Scopes to tenant and groups matches.
+   *
+   * @param {string} tenantId
+   * @param {object} query - { q, page, limit }
+   * @returns {Promise<object>}
+   */
+  async searchMessages(tenantId, query) {
+    const { q, page = 1, limit = 20 } = query;
+    const pageNum = parseInt(page, 10) || 1;
+    const limitNum = parseInt(limit, 10) || 20;
+
+    const { conversations, messages } = await whatsappRepository.searchMessages(tenantId, { q });
+
+    const grouped = {};
+
+    // 1. Process client/conversation matches first (Type: CONVERSATION)
+    for (const conv of conversations) {
+      const client = conv.client;
+      const lastMsg = conv.messages?.[0] || null;
+      grouped[conv.id] = {
+        conversationId: conv.id,
+        clientId: client?.id || '',
+        clientName: client ? `${client.firstName} ${client.lastName}`.trim() : 'Unknown Client',
+        phone: client?.phone || '',
+        avatarAssetId: client?.avatarAssetId || null,
+        type: 'CONVERSATION',
+        messageId: lastMsg?.id || '',
+        messagePreview: lastMsg?.previewText || lastMsg?.body || '',
+        messageType: lastMsg?.type || 'TEXT',
+        createdAt: conv.lastMessageAt ? conv.lastMessageAt.toISOString() : conv.createdAt.toISOString(),
+        matches: [],
+        isArchived: conv.isArchived,
+      };
+    }
+
+    // 2. Process message content matches (Type: MESSAGE)
+    for (const msg of messages) {
+      const convId = msg.conversationId;
+      const client = msg.conversation?.client;
+
+      if (!grouped[convId]) {
+        grouped[convId] = {
+          conversationId: convId,
+          clientId: client?.id || '',
+          clientName: client ? `${client.firstName} ${client.lastName}`.trim() : 'Unknown Client',
+          phone: client?.phone || '',
+          avatarAssetId: client?.avatarAssetId || null,
+          type: 'MESSAGE',
+          messageId: msg.id,
+          messagePreview: msg.previewText || msg.body || '',
+          messageType: msg.type,
+          createdAt: msg.createdAt.toISOString(),
+          matches: [],
+          isArchived: msg.conversation?.isArchived || false,
+        };
+      }
+
+      grouped[convId].matches.push({
+        messageId: msg.id,
+        messagePreview: msg.previewText || msg.body || '',
+        messageType: msg.type,
+        createdAt: msg.createdAt.toISOString(),
+      });
+    }
+
+    // 3. Convert grouped object to array and sort by latest activity date
+    const allResults = Object.values(grouped).sort((a, b) => {
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
+
+    const total = allResults.length;
+    const skip = (pageNum - 1) * limitNum;
+    const paginatedResults = allResults.slice(skip, skip + limitNum);
+
+    return {
+      results: paginatedResults,
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        total,
+        totalPages: Math.ceil(total / limitNum),
+      },
+    };
+  },
 };
+

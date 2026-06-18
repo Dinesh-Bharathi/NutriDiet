@@ -648,13 +648,18 @@ export const whatsappWebhookService = {
               await redis.set(`whatsapp:correlation:local:${savedMessage.id}`, correlationId, 'EX', 604800);
             }
 
-            // Update conversation last messageDetails
+            // Update conversation last messageDetails.
+            // Auto-unarchive: an inbound message always re-activates archived conversations.
             const updatedConv = await prisma.whatsAppConversation.update({
               where: { id: conversation.id },
               data: {
                 lastMessageId: savedMessage.id,
                 lastMessageText: previewText.slice(0, 499),
                 lastMessageAt: timestamp,
+                // Automatically remove archived flag when client sends a new message.
+                // This matches WhatsApp Web behaviour: new inbound messages restore the
+                // conversation to the active inbox across all connected clients.
+                ...(conversation.isArchived ? { isArchived: false } : {}),
               },
               include: {
                 client: {
@@ -788,6 +793,20 @@ export const whatsappWebhookService = {
     wamid,
   }) {
     try {
+      // Guard: skip all notification delivery if the conversation is muted.
+      // Mute is backend-enforced: no Notification rows created, no unread counts
+      // incremented, no socket events emitted, no desktop/toast notifications.
+      // Timeline updates and message persistence continue normally.
+      if (conversation.isMuted) {
+        logWhatsApp(
+          '[WHATSAPP_NOTIFY]',
+          { tenantId, conversationId: conversation.id, messageId: savedMessage.id },
+          'Notification suppressed: conversation is muted (isMuted=true).',
+          'info',
+        );
+        return;
+      }
+
       // Guard: skip non-notifiable message types (reactions, system, etc.)
       if (!NOTIFIABLE_WHATSAPP_MESSAGE_TYPES.has(mappedType)) {
         logWhatsApp(

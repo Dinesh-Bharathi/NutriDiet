@@ -73,6 +73,13 @@ router.post(
   asyncHandler(whatsappController.validateConnection)
 );
 
+// GET search client conversations and messages (ASSISTANT or higher)
+router.get(
+  '/search',
+  requireMinRole(ROLES.ASSISTANT),
+  asyncHandler(whatsappController.search)
+);
+
 // GET conversations list (ASSISTANT or higher)
 router.get(
   '/conversations',

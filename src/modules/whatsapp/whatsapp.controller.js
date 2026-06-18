@@ -802,5 +802,22 @@ export const whatsappController = {
         read
       }
     });
+  },
+
+  /**
+   * GET /api/v1/whatsapp/search
+   * Scoped search for WhatsApp messages and clients.
+   */
+  async search(req, res) {
+    const tenantId = req.user.tenantId;
+    const result = await whatsappService.searchMessages(tenantId, req.query);
+    
+    return sendSuccess(
+      res,
+      HTTP_STATUS.OK,
+      'Messages and client conversations searched successfully',
+      result
+    );
   }
 };
+
