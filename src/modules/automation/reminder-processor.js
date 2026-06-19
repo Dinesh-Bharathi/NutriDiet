@@ -4,6 +4,9 @@ import prisma from '../../lib/prisma.js';
 import logger from '../../utils/logger.js';
 import { automationTemplateRegistry } from './automation-template-variables.js';
 import { exists as redisExists } from '../../lib/redis.js';
+import { whatsappAutomationService } from './whatsapp-automation.service.js';
+import { complianceService } from './compliance.service.js';
+import { complianceTimeoutQueue } from './compliance-timeout.worker.js';
 
 export const reminderProcessor = {
   /**
@@ -60,6 +63,20 @@ export const reminderProcessor = {
       return;
     }
 
+    // Enforce opt-in status check
+    const conversation = await prisma.whatsAppConversation.findFirst({
+      where: { tenantId: job.tenantId, clientId: job.clientId },
+    });
+
+    if (!conversation || !conversation.optInStatus) {
+      logger.info(`[AUTOMATION] WhatsApp opt-in status is FALSE for client ${job.clientId}. Silently skipping reminder job ${job.id}.`, logMeta);
+      await prisma.reminderJob.update({
+        where: { id: jobId },
+        data: { status: 'CANCELLED', errorText: 'Skipped: Client has not opted into WhatsApp communications.' },
+      });
+      return;
+    }
+
     logger.info(`[REMINDER_WORKER] Processing job ${job.id} (Type: ${job.jobType})`, logMeta);
 
     // Update job to PROCESSING and increment attempts
@@ -73,30 +90,29 @@ export const reminderProcessor = {
 
     try {
       // 3. Immutable Snapshot Enforcement
-      // Worker execution MUST ONLY use compiledTitle and compiledMessage from the snapshot.
       let compiledTitle = job.compiledTitle;
       let compiledMessage = job.compiledMessage;
+      let template = null;
+
+      if (job.templateId) {
+        template = await prisma.reminderTemplate.findUnique({
+          where: { id: job.templateId },
+        });
+      }
+
+      if (!template) {
+        template = await prisma.reminderTemplate.findFirst({
+          where: {
+            tenantId: job.tenantId,
+            type: job.jobType,
+            isDefault: true,
+            isActive: true,
+          },
+        });
+      }
 
       if (!compiledTitle || !compiledMessage) {
         logger.warn(`[AUTOMATION] Snapshot missing on job ${job.id}. Compiling fallback...`, logMeta);
-        
-        let template = null;
-        if (job.templateId) {
-          template = await prisma.reminderTemplate.findUnique({
-            where: { id: job.templateId },
-          });
-        }
-        if (!template) {
-          // Fallback default
-          template = await prisma.reminderTemplate.findFirst({
-            where: {
-              tenantId: job.tenantId,
-              type: job.jobType,
-              isDefault: true,
-              isActive: true,
-            },
-          });
-        }
 
         if (!template) {
           throw new Error(`No template found for type ${job.jobType}`);
@@ -122,34 +138,80 @@ export const reminderProcessor = {
         });
       }
 
-      // 4. Mock Delivery (Phase 7B only logs dispatch)
-      logger.info(`[Mock Dispatch - WHATSAPP] To: ${job.client.firstName} (${job.client.phone})\nTitle: ${compiledTitle}\nMessage: ${compiledMessage}`, logMeta);
+      const buttons = template?.buttons || [];
 
-      // 5. Create ReminderExecution record (Success)
+      // 4. Live WhatsApp Dispatch
+      const dispatchResult = await whatsappAutomationService.sendAutomationReminder(job.tenantId, {
+        clientId: job.clientId,
+        compiledMessage,
+        buttons,
+        reminderJobId: job.id,
+        jobType: job.jobType,
+      });
+
+      if (dispatchResult.skipped) {
+        logger.warn(`[AUTOMATION] Reminder send skipped: ${dispatchResult.reason}. Marking job ${job.id} as CANCELLED.`, logMeta);
+        await prisma.reminderJob.update({
+          where: { id: job.id },
+          data: {
+            status: 'CANCELLED',
+            errorText: `Skipped: ${dispatchResult.reason}`,
+          },
+        });
+        return;
+      }
+
+      const { metaMessageId, messageId } = dispatchResult;
+
+      // 5. Create Success ReminderExecution record
       await prisma.reminderExecution.create({
         data: {
           tenantId: job.tenantId,
           reminderJobId: job.id,
           status: 'SENT',
           executedAt: new Date(),
+          metaMessageId,
           metadata: {
             attempt: updatedJob.attempts,
             channel: job.channel,
             compiledTitle,
             compiledMessage,
+            whatsAppMessageId: messageId,
           },
         },
       });
 
       // 6. Update ReminderJob status to SENT
-      await prisma.reminderJob.update({
+      const sentJob = await prisma.reminderJob.update({
         where: { id: job.id },
         data: {
           status: 'SENT',
           executedAt: new Date(),
-          errorText: null, // Clear any previous error text
+          errorText: null,
+          sentMetaMessageId: metaMessageId,
         },
       });
+
+      // 7. Create Compliance Event
+      const complianceEvent = await complianceService.createComplianceEvent(prisma, sentJob);
+
+      // 8. Queue Compliance Timeout BullMQ delayed job
+      const delayMs = complianceEvent.responseWindowClosesAt.getTime() - Date.now();
+      await complianceTimeoutQueue.add(
+        'compliance-timeout',
+        { complianceEventId: complianceEvent.id },
+        {
+          delay: Math.max(0, delayMs),
+          jobId: `timeout-${complianceEvent.id}`,
+          attempts: 3,
+          backoff: {
+            type: 'exponential',
+            delay: 5000,
+          },
+        }
+      );
+
+      logger.info(`[AUTOMATION] Successfully dispatched reminder, created event ${complianceEvent.id}, and scheduled timeout job.`, logMeta);
 
     } catch (err) {
       logger.error(`[REMINDER_FAILURE] Failed to process job ${job.id}: ${err.message}`, {

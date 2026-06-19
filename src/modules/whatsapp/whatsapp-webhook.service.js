@@ -12,6 +12,7 @@ import {
   buildWhatsAppNotificationPayload,
   resolveWhatsAppNotificationRecipients,
 } from "../notifications/helpers/whatsapp-notification.helper.js";
+import { complianceService } from '../automation/compliance.service.js';
 
 export const whatsappWebhookService = {
   /**
@@ -646,6 +647,136 @@ export const whatsappWebhookService = {
             });
 
             logWhatsApp('[WHATSAPP_WEBHOOK] Message persisted', { tenantId, messageId: savedMessage.id });
+
+            // ── Compliance Event Capture Hook ───────────────────────────────────
+            try {
+              let complianceEvent = null;
+
+              if (savedMessage.replyToMetaMessageId) {
+                const execution = await prisma.reminderExecution.findFirst({
+                  where: { metaMessageId: savedMessage.replyToMetaMessageId, tenantId },
+                });
+                if (execution) {
+                  complianceEvent = await prisma.clientComplianceEvent.findFirst({
+                    where: { reminderJobId: execution.reminderJobId, tenantId, status: 'PENDING' },
+                  });
+                }
+              }
+
+              if (!complianceEvent) {
+                complianceEvent = await prisma.clientComplianceEvent.findFirst({
+                  where: {
+                    clientId: client.id,
+                    tenantId,
+                    status: 'PENDING',
+                    responseWindowClosesAt: { gte: timestamp },
+                  },
+                  orderBy: { scheduledFor: 'desc' },
+                });
+              }
+
+              if (complianceEvent) {
+                let responseType = 'NO_RESPONSE';
+                let responseValue = {};
+
+                const rawBody = (savedMessage.body || '').trim().toLowerCase();
+                const isInteractive = savedMessage.type === 'INTERACTIVE' && savedMessage.interactivePayload;
+
+                if (isInteractive) {
+                  const replyId = savedMessage.interactivePayload.button_reply?.id || savedMessage.interactivePayload.list_reply?.id;
+                  const replyTitle = savedMessage.interactivePayload.button_reply?.title || savedMessage.interactivePayload.list_reply?.title || '';
+
+                  if (replyId === 'v1_meal_complete') {
+                    responseType = 'MEAL_COMPLETED';
+                    responseValue = { mealStatus: 'COMPLETED' };
+                  } else if (replyId === 'v1_meal_partial') {
+                    responseType = 'MEAL_PARTIAL';
+                    responseValue = { mealStatus: 'PARTIAL' };
+                  } else if (replyId === 'v1_meal_skip') {
+                    responseType = 'MEAL_SKIPPED';
+                    responseValue = { mealStatus: 'SKIPPED' };
+                  } else if (replyId?.startsWith('v1_water_')) {
+                    responseType = 'WATER_INTAKE';
+                    const rangeMap = {
+                      v1_water_lt1: '<1L',
+                      v1_water_1_2: '1-2L',
+                      v1_water_2_3: '2-3L',
+                      v1_water_gt3: '3L+',
+                    };
+                    responseValue = { waterRange: rangeMap[replyId] || replyTitle };
+                  } else if (replyId?.startsWith('v1_sleep_')) {
+                    responseType = 'SLEEP_HOURS';
+                    const rangeMap = {
+                      v1_sleep_lt5: '<5H',
+                      v1_sleep_5_6: '5-6H',
+                      v1_sleep_7_8: '7-8H',
+                      v1_sleep_gt8: '8H+',
+                    };
+                    responseValue = { sleepRange: rangeMap[replyId] || replyTitle };
+                  } else {
+                    responseType = 'MEAL_COMPLETED';
+                    responseValue = { buttonText: replyTitle };
+                  }
+                } else {
+                  const isMealJob = complianceEvent.mealName !== null;
+                  const isWaterJob = complianceEvent.reminderJobId && (await prisma.reminderJob.findUnique({
+                    where: { id: complianceEvent.reminderJobId },
+                    select: { jobType: true },
+                  }))?.jobType === 'WATER_REMINDER';
+                  const isSleepJob = complianceEvent.reminderJobId && (await prisma.reminderJob.findUnique({
+                    where: { id: complianceEvent.reminderJobId },
+                    select: { jobType: true },
+                  }))?.jobType === 'SLEEP_REMINDER';
+
+                  if (isMealJob) {
+                    if (/(done|yes|ate|completed|ok|👍)/.test(rawBody)) {
+                      responseType = 'MEAL_COMPLETED';
+                      responseValue = { mealStatus: 'COMPLETED' };
+                    } else if (/(skip|skipped|no|later|can't|won't)/.test(rawBody)) {
+                      responseType = 'MEAL_SKIPPED';
+                      responseValue = { mealStatus: 'SKIPPED' };
+                    } else if (/(modify|changed|less|more|half|partially|partial)/.test(rawBody)) {
+                      responseType = 'MEAL_PARTIAL';
+                      responseValue = { mealStatus: 'PARTIAL' };
+                    } else {
+                      responseType = 'MEAL_COMPLETED';
+                      responseValue = { rawText: savedMessage.body };
+                    }
+                  } else if (isWaterJob) {
+                    let range = '1-2L';
+                    if (/(<1|less than 1|little|small)/.test(rawBody)) range = '<1L';
+                    else if (/(1-2|1 to 2|one to two)/.test(rawBody)) range = '1-2L';
+                    else if (/(2-3|2 to 3|two to three)/.test(rawBody)) range = '2-3L';
+                    else if (/(>3|more than 3|3\+|3l)/.test(rawBody)) range = '3L+';
+
+                    responseType = 'WATER_INTAKE';
+                    responseValue = { waterRange: range };
+                  } else if (isSleepJob) {
+                    let range = '7-8H';
+                    if (/(<5|less than 5|4|3)/.test(rawBody)) range = '<5H';
+                    else if (/(5-6|five to six)/.test(rawBody)) range = '5-6H';
+                    else if (/(7-8|seven to eight)/.test(rawBody)) range = '7-8H';
+                    else if (/(>8|more than 8|8\+|9|10)/.test(rawBody)) range = '8H+';
+
+                    responseType = 'SLEEP_HOURS';
+                    responseValue = { sleepRange: range };
+                  }
+                }
+
+                await complianceService.recordResponse(tenantId, client.id, complianceEvent.id, {
+                  responseType,
+                  raw: savedMessage.body,
+                  value: responseValue,
+                  source: isInteractive ? 'BUTTON' : 'TEXT',
+                  respondedAt: timestamp,
+                });
+              }
+            } catch (complianceErr) {
+              logger.error(`[COMPLIANCE_ERROR] Error capturing compliance response: ${complianceErr.message}`, {
+                error: complianceErr.message,
+                stack: complianceErr.stack,
+              });
+            }
 
             if (redis) {
               await redis.set(`whatsapp:correlation:local:${savedMessage.id}`, correlationId, 'EX', 604800);

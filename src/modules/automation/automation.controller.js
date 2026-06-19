@@ -188,6 +188,7 @@ export const automationController = {
         dietPlan: true,
         template: true,
         automation: true,
+        complianceEvent: true,
         executions: {
           orderBy: { executedAt: 'desc' },
         },

@@ -187,4 +187,19 @@ router.get(
   asyncHandler(automationController.getClientAutomations)
 );
 
+// ── Client Compliance Sub-Routes ─────────────────────────────────────────────
+import { complianceController } from '../automation/compliance.controller.js';
+router.get(
+  '/:clientId/compliance/calendar',
+  asyncHandler(complianceController.getComplianceCalendar)
+);
+router.get(
+  '/:clientId/compliance/analytics',
+  asyncHandler(complianceController.getComplianceAnalytics)
+);
+router.get(
+  '/:clientId/compliance/events',
+  asyncHandler(complianceController.getComplianceEvents)
+);
+
 export default router;

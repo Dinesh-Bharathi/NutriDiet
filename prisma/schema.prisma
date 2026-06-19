@@ -184,14 +184,14 @@ model Tenant {
   pdfTemplateConfig Json?
 
   // Practice branding fields
-  practiceEmail     String?
-  practicePhone     String?
-  addressLine1      String?
-  addressLine2      String?
-  city              String?
-  state             String?
-  country           String?
-  postalCode        String?
+  practiceEmail String?
+  practicePhone String?
+  addressLine1  String?
+  addressLine2  String?
+  city          String?
+  state         String?
+  country       String?
+  postalCode    String?
 
   // Timestamps
   createdAt DateTime  @default(now())
@@ -233,6 +233,8 @@ model Tenant {
   reminderJobs                ReminderJob[]
   reminderTemplates           ReminderTemplate[]
   reminderExecutions          ReminderExecution[]
+  complianceEvents            ClientComplianceEvent[]
+  complianceDailySummaries    ComplianceDailySummary[]
 
   @@index([slug])
   @@index([status])
@@ -320,10 +322,10 @@ model Client {
   addressLine2     String?
   city             String?
   state            String?
-  country          String?          // ISO alpha-2 e.g. "IN"
+  country          String? // ISO alpha-2 e.g. "IN"
   timezone         String?
   locale           String?
-  remindersEnabled Boolean          @default(true)
+  remindersEnabled Boolean @default(true)
 
   status           ClientStatus     @default(ACTIVE)
   onboardingStatus OnboardingStatus @default(PENDING)
@@ -357,6 +359,8 @@ model Client {
   whatsAppConversations     WhatsAppConversation[]
   dietPlanAutomations       DietPlanAutomation[]
   reminderJobs              ReminderJob[]
+  complianceEvents          ClientComplianceEvent[]
+  complianceDailySummaries  ComplianceDailySummary[]
 
   @@index([tenantId])
   @@index([tenantId, dietitianId])
@@ -922,12 +926,12 @@ model DietPlan {
   totalFat      Float @default(0)
 
   // Data Sections (HTML content from RichTextEditor)
-  instructions       String? @db.Text
-  recommendations    String? @db.Text
-  lifestyleAdvice    String? @db.Text
-  hydration          String? @db.Text
-  supplementNotes    String? @db.Text
-  mealPrepNotes      String? @db.Text
+  instructions    String? @db.Text
+  recommendations String? @db.Text
+  lifestyleAdvice String? @db.Text
+  hydration       String? @db.Text
+  supplementNotes String? @db.Text
+  mealPrepNotes   String? @db.Text
 
   // Versioning
   versionNumber Int @default(1)
@@ -945,15 +949,15 @@ model DietPlan {
   deletedAt DateTime?
 
   // Relations
-  tenant      Tenant             @relation(fields: [tenantId], references: [id])
-  client      Client             @relation(fields: [clientId], references: [id])
-  assessment  Assessment?        @relation(fields: [assessmentId], references: [id])
-  goalProfile ClientGoalProfile? @relation(fields: [goalProfileId], references: [id])
-  creator     User               @relation(fields: [createdBy], references: [id])
-  meals       DietPlanMeal[]
-  checkIns    ClientCheckIn[]
-  cycles      DietPlanCycle[]
-  automations DietPlanAutomation[]
+  tenant       Tenant               @relation(fields: [tenantId], references: [id])
+  client       Client               @relation(fields: [clientId], references: [id])
+  assessment   Assessment?          @relation(fields: [assessmentId], references: [id])
+  goalProfile  ClientGoalProfile?   @relation(fields: [goalProfileId], references: [id])
+  creator      User                 @relation(fields: [createdBy], references: [id])
+  meals        DietPlanMeal[]
+  checkIns     ClientCheckIn[]
+  cycles       DietPlanCycle[]
+  automations  DietPlanAutomation[]
   reminderJobs ReminderJob[]
 
   @@index([tenantId])
@@ -1076,12 +1080,12 @@ model DietPlanTemplate {
   totalFat      Float @default(0)
 
   // Data Sections (HTML content from RichTextEditor)
-  instructions       String? @db.Text
-  recommendations    String? @db.Text
-  lifestyleAdvice    String? @db.Text
-  hydration          String? @db.Text
-  supplementNotes    String? @db.Text
-  mealPrepNotes      String? @db.Text
+  instructions    String? @db.Text
+  recommendations String? @db.Text
+  lifestyleAdvice String? @db.Text
+  hydration       String? @db.Text
+  supplementNotes String? @db.Text
+  mealPrepNotes   String? @db.Text
 
   isPublic  Boolean   @default(false)
   createdBy String
@@ -1090,10 +1094,10 @@ model DietPlanTemplate {
   deletedAt DateTime?
 
   // Relations
-  tenant   Tenant                 @relation(fields: [tenantId], references: [id])
-  creator  User                   @relation(fields: [createdBy], references: [id])
-  meals    DietPlanTemplateMeal[]
-  cycles   TemplateCycle[]
+  tenant  Tenant                 @relation(fields: [tenantId], references: [id])
+  creator User                   @relation(fields: [createdBy], references: [id])
+  meals   DietPlanTemplateMeal[]
+  cycles  TemplateCycle[]
 
   @@index([tenantId])
   @@map("diet_plan_templates")
@@ -1506,8 +1510,8 @@ model FileAsset {
   updatedAt       DateTime        @updatedAt
   deletedAt       DateTime?
 
-  tenant   Tenant         @relation(fields: [tenantId], references: [id])
-  user            User           @relation("FileUploader", fields: [uploadedBy], references: [id])
+  tenant            Tenant           @relation(fields: [tenantId], references: [id])
+  user              User             @relation("FileUploader", fields: [uploadedBy], references: [id])
   clientsAsAvatar   Client[]         @relation("ClientAvatar")
   vaultDocument     VaultDocument?
   whatsAppMessageId String?
@@ -1548,40 +1552,40 @@ model WhatsAppConnection {
 
   status WhatsAppConnectionStatus @default(NOT_CONFIGURED)
 
-  provider           String? @default("WHATSAPP")
-  tokenType          String?
-  scope              String?
-  metaBusinessId     String?
+  provider       String? @default("WHATSAPP")
+  tokenType      String?
+  scope          String?
+  metaBusinessId String?
 
-  wabaId             String?
-  phoneNumberId      String?
-  businessAccountId  String?
+  wabaId            String?
+  phoneNumberId     String?
+  businessAccountId String?
 
   displayPhoneNumber String?
   verifiedName       String?
 
-  accessToken        String?
-  refreshToken       String?
+  accessToken  String?
+  refreshToken String?
 
-  tokenExpiresAt     DateTime?
+  tokenExpiresAt DateTime?
 
-  webhookVerified    Boolean @default(false)
+  webhookVerified Boolean @default(false)
 
-  connectedAt        DateTime?
-  lastSyncAt         DateTime?
-  
+  connectedAt DateTime?
+  lastSyncAt  DateTime?
+
   lastValidatedAt            DateTime?
   lastSuccessfulValidationAt DateTime?
   lastError                  String?
   lastErrorCode              String?
   lastErrorAt                DateTime?
-  validationAttempts         Int      @default(0)
+  validationAttempts         Int       @default(0)
   credentialFingerprint      String?
 
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  tenant             Tenant @relation(fields: [tenantId], references: [id])
+  tenant Tenant @relation(fields: [tenantId], references: [id])
 
   @@index([tenantId])
   @@map("whatsapp_connections")
@@ -1618,6 +1622,7 @@ enum WhatsAppMessageType {
   STICKER
   REACTION
   SYSTEM
+  INTERACTIVE
 }
 
 enum WhatsAppMessageStatus {
@@ -1629,33 +1634,33 @@ enum WhatsAppMessageStatus {
 }
 
 model WhatsAppConversation {
-  id                        String                @id @default(cuid())
-  tenantId                  String
-  clientId                  String
-  
-  optInStatus               Boolean               @default(false)
-  optInCapturedAt           DateTime?
-  
-  lastMessageId             String?
-  lastMessageText           String?               @db.VarChar(500)
-  lastMessageAt             DateTime?
-  unreadCount               Int                   @default(0)
-  
-  isArchived                Boolean               @default(false)
-  isMuted                   Boolean               @default(false)
-  
+  id       String @id @default(cuid())
+  tenantId String
+  clientId String
+
+  optInStatus     Boolean   @default(false)
+  optInCapturedAt DateTime?
+
+  lastMessageId   String?
+  lastMessageText String?   @db.VarChar(500)
+  lastMessageAt   DateTime?
+  unreadCount     Int       @default(0)
+
+  isArchived Boolean @default(false)
+  isMuted    Boolean @default(false)
+
   conversationStartedAt     DateTime?
   lastInboundAt             DateTime?
   lastOutboundAt            DateTime?
   lastClientMessageAt       DateTime?
   lastPractitionerMessageAt DateTime?
-  
-  createdAt                 DateTime              @default(now())
-  updatedAt                 DateTime              @updatedAt
-  
-  tenant                    Tenant                @relation(fields: [tenantId], references: [id])
-  client                    Client                @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  messages                  WhatsAppMessage[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant   Tenant            @relation(fields: [tenantId], references: [id])
+  client   Client            @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  messages WhatsAppMessage[]
 
   @@unique([tenantId, clientId])
   @@index([tenantId])
@@ -1664,70 +1669,70 @@ model WhatsAppConversation {
 }
 
 model WhatsAppMessage {
-  id                String                   @id @default(cuid())
-  tenantId          String
-  conversationId    String
-  metaMessageId     String?                  @unique
-  
-  direction         WhatsAppMessageDirection
-  type              WhatsAppMessageType
-  status            WhatsAppMessageStatus    @default(QUEUED)
-  senderType        WhatsAppSenderType
-  source            WhatsAppMessageSource    @default(MANUAL)
-  
-  body              String?                  @db.Text
-  templateName      String?
-  templateLanguage  String?                  @db.VarChar(10)
-  
-  mediaMimeType     String?                  @db.VarChar(100)
-  mediaSize         Int?
-  
-  mediaUrl                String?                  @db.Text
-  mediaFileName           String?                  @db.VarChar(255)
-  mediaWidth              Int?
-  mediaHeight             Int?
-  mediaDurationSeconds    Int?
-  storageFileId           String?
-  replyToMessageId        String?
-  replyToMetaMessageId    String?
-  replyPreviewText        String?                  @db.Text
-  locationLatitude        Float?
-  locationLongitude       Float?
-  locationName            String?                  @db.VarChar(255)
-  locationAddress         String?                  @db.Text
-  contactName             String?                  @db.VarChar(255)
-  contactPhones           Json?
-  contactPayload          Json?
-  interactivePayload      Json?
-  previewText             String?                  @db.VarChar(500)
-  
-  senderUserId      String?
-  senderRole        Role?
-  senderName        String?                  @db.VarChar(100)
-  senderPhone       String?                  @db.VarChar(30)
-  createdByUserId   String?
-  
-  errorText         String?                  @db.Text
-  lastErrorCode     String?                  @db.VarChar(50)
-  
-  sentAt            DateTime?
-  deliveredAt       DateTime?
-  readAt            DateTime?
-  failedAt          DateTime?
-  
-  deletedAt         DateTime?
-  deletedByUserId   String?
-  deleteSource      String?                  @db.VarChar(20)
-  deletedBy         String?                  @db.VarChar(100)
-  
-  createdAt         DateTime                 @default(now())
-  updatedAt         DateTime                 @updatedAt
+  id             String  @id @default(cuid())
+  tenantId       String
+  conversationId String
+  metaMessageId  String? @unique
 
-  tenant            Tenant                   @relation(fields: [tenantId], references: [id])
-  conversation      WhatsAppConversation     @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  senderUser        User?                    @relation(fields: [senderUserId], references: [id], onDelete: SetNull)
-  attachments       FileAsset[]
-  reactions         WhatsAppReaction[]
+  direction  WhatsAppMessageDirection
+  type       WhatsAppMessageType
+  status     WhatsAppMessageStatus    @default(QUEUED)
+  senderType WhatsAppSenderType
+  source     WhatsAppMessageSource    @default(MANUAL)
+
+  body             String? @db.Text
+  templateName     String?
+  templateLanguage String? @db.VarChar(10)
+
+  mediaMimeType String? @db.VarChar(100)
+  mediaSize     Int?
+
+  mediaUrl             String? @db.Text
+  mediaFileName        String? @db.VarChar(255)
+  mediaWidth           Int?
+  mediaHeight          Int?
+  mediaDurationSeconds Int?
+  storageFileId        String?
+  replyToMessageId     String?
+  replyToMetaMessageId String?
+  replyPreviewText     String? @db.Text
+  locationLatitude     Float?
+  locationLongitude    Float?
+  locationName         String? @db.VarChar(255)
+  locationAddress      String? @db.Text
+  contactName          String? @db.VarChar(255)
+  contactPhones        Json?
+  contactPayload       Json?
+  interactivePayload   Json?
+  previewText          String? @db.VarChar(500)
+
+  senderUserId    String?
+  senderRole      Role?
+  senderName      String? @db.VarChar(100)
+  senderPhone     String? @db.VarChar(30)
+  createdByUserId String?
+
+  errorText     String? @db.Text
+  lastErrorCode String? @db.VarChar(50)
+
+  sentAt      DateTime?
+  deliveredAt DateTime?
+  readAt      DateTime?
+  failedAt    DateTime?
+
+  deletedAt       DateTime?
+  deletedByUserId String?
+  deleteSource    String?   @db.VarChar(20)
+  deletedBy       String?   @db.VarChar(100)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant       Tenant               @relation(fields: [tenantId], references: [id])
+  conversation WhatsAppConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  senderUser   User?                @relation(fields: [senderUserId], references: [id], onDelete: SetNull)
+  attachments  FileAsset[]
+  reactions    WhatsAppReaction[]
 
   @@index([tenantId])
   @@index([conversationId])
@@ -1738,17 +1743,17 @@ model WhatsAppMessage {
 }
 
 model WhatsAppReaction {
-  id              String   @id @default(cuid())
-  tenantId        String
-  messageId       String
-  metaMessageId   String?  @db.VarChar(100)
-  senderPhone     String   @db.VarChar(30)
-  senderName      String?  @db.VarChar(100)
-  emoji           String   @db.VarChar(50)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id            String   @id @default(cuid())
+  tenantId      String
+  messageId     String
+  metaMessageId String?  @db.VarChar(100)
+  senderPhone   String   @db.VarChar(30)
+  senderName    String?  @db.VarChar(100)
+  emoji         String   @db.VarChar(50)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
-  message         WhatsAppMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  message WhatsAppMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
 
   @@unique([messageId, senderPhone])
   @@index([tenantId])
@@ -1757,7 +1762,7 @@ model WhatsAppReaction {
 }
 
 model Notification {
-  id         String   @id @default(cuid())
+  id         String    @id @default(cuid())
   tenantId   String
   userId     String
   type       String
@@ -1765,14 +1770,14 @@ model Notification {
   message    String
   entityType String?
   entityId   String?
-  priority   String   @default("NORMAL")
+  priority   String    @default("NORMAL")
   actionUrl  String?
   metadata   Json?
-  isRead     Boolean  @default(false)
+  isRead     Boolean   @default(false)
   readAt     DateTime?
-  isArchived Boolean  @default(false)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  isArchived Boolean   @default(false)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
 
   // Relations
   tenant Tenant @relation(fields: [tenantId], references: [id])
@@ -1793,11 +1798,11 @@ model NotificationPreference {
   soundNotifications   Boolean  @default(true)
   soundVolume          Int      @default(80)
   soundId              String   @default("message-default")
-  categories           Json?    // Kept for backward compatibility migration
+  categories           Json? // Kept for backward compatibility migration
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 
-  user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@map("notification_preferences")
@@ -1808,29 +1813,30 @@ model NotificationPreference {
 // ─────────────────────────────────────────────────────────────────────────────
 
 model DietPlanAutomation {
-  id                  String           @id @default(cuid())
-  tenantId            String
-  clientId            String
-  dietPlanId          String
-  status              AutomationStatus @default(ACTIVE)
-  activatedAt         DateTime?
-  activatedBy         String?
-  startDate           DateTime?
-  stoppedAt           DateTime?
-  version             Int              @default(1)
-  waterEnabled        Boolean          @default(true)
-  waterFrequencyType  String           @default("FREQUENCY") // "FREQUENCY" or "CUSTOM"
-  waterIntervalHours  Int?             @default(2)
-  waterCustomTimes    Json?            // e.g. ["08:00", "12:00", "16:00", "20:00"]
-  sleepEnabled        Boolean          @default(true)
-  sleepTime           String?          @default("22:00")
-  createdAt           DateTime         @default(now())
-  updatedAt           DateTime         @updatedAt
+  id                 String           @id @default(cuid())
+  tenantId           String
+  clientId           String
+  dietPlanId         String
+  status             AutomationStatus @default(ACTIVE)
+  activatedAt        DateTime?
+  activatedBy        String?
+  startDate          DateTime?
+  stoppedAt          DateTime?
+  version            Int              @default(1)
+  waterEnabled       Boolean          @default(true)
+  waterFrequencyType String           @default("FREQUENCY") // "FREQUENCY" or "CUSTOM"
+  waterIntervalHours Int?             @default(2)
+  waterCustomTimes   Json? // e.g. ["08:00", "12:00", "16:00", "20:00"]
+  sleepEnabled       Boolean          @default(true)
+  sleepTime          String?          @default("22:00")
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
 
-  tenant       Tenant        @relation(fields: [tenantId], references: [id])
-  client       Client        @relation(fields: [clientId], references: [id])
-  dietPlan     DietPlan      @relation(fields: [dietPlanId], references: [id])
-  reminderJobs ReminderJob[]
+  tenant           Tenant                  @relation(fields: [tenantId], references: [id])
+  client           Client                  @relation(fields: [clientId], references: [id])
+  dietPlan         DietPlan                @relation(fields: [dietPlanId], references: [id])
+  reminderJobs     ReminderJob[]
+  complianceEvents ClientComplianceEvent[]
 
   @@index([tenantId])
   @@index([tenantId, clientId])
@@ -1840,7 +1846,7 @@ model DietPlanAutomation {
 }
 
 model ReminderJob {
-  id                String             @id @default(cuid())
+  id                String            @id @default(cuid())
   tenantId          String
   clientId          String
   automationId      String
@@ -1848,27 +1854,30 @@ model ReminderJob {
   jobType           ReminderJobType
   scheduledFor      DateTime
   timezone          String
-  status            ReminderJobStatus  @default(PENDING)
-  channel           ReminderChannel    @default(WHATSAPP)
+  status            ReminderJobStatus @default(PENDING)
+  channel           ReminderChannel   @default(WHATSAPP)
   templateId        String?
   templateVersion   Int?
-  automationVersion Int                @default(1)
+  automationVersion Int               @default(1)
   queueJobId        String?
   compiledTitle     String?
   compiledMessage   String?
   payload           Json?
-  attempts          Int                @default(0)
+  attempts          Int               @default(0)
   executedAt        DateTime?
   errorText         String?
-  createdAt         DateTime           @default(now())
-  updatedAt         DateTime           @updatedAt
+  sentMetaMessageId String?           @db.VarChar(100)
+  complianceEventId String?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
 
-  tenant     Tenant              @relation(fields: [tenantId], references: [id])
-  client     Client              @relation(fields: [clientId], references: [id])
-  automation DietPlanAutomation  @relation(fields: [automationId], references: [id], onDelete: Cascade)
-  dietPlan   DietPlan            @relation(fields: [dietPlanId], references: [id])
-  template   ReminderTemplate?   @relation(fields: [templateId], references: [id], onDelete: SetNull)
-  executions ReminderExecution[]
+  tenant          Tenant                 @relation(fields: [tenantId], references: [id])
+  client          Client                 @relation(fields: [clientId], references: [id])
+  automation      DietPlanAutomation     @relation(fields: [automationId], references: [id], onDelete: Cascade)
+  dietPlan        DietPlan               @relation(fields: [dietPlanId], references: [id])
+  template        ReminderTemplate?      @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  executions      ReminderExecution[]
+  complianceEvent ClientComplianceEvent?
 
   @@index([tenantId])
   @@index([tenantId, clientId])
@@ -1878,18 +1887,19 @@ model ReminderJob {
 }
 
 model ReminderTemplate {
-  id           String               @id @default(cuid())
-  tenantId     String?
-  name         String
-  type         ReminderTemplateType
-  title        String
-  message      String               @db.Text
-  buttons      Json?
-  isDefault    Boolean              @default(false)
-  isActive     Boolean              @default(true)
-  version      Int                  @default(1)
-  createdAt    DateTime             @default(now())
-  updatedAt    DateTime             @updatedAt
+  id        String               @id @default(cuid())
+  tenantId  String?
+  name      String
+  type      ReminderTemplateType
+  title     String
+  message   String               @db.Text
+  buttons   Json?
+  config    Json?
+  isDefault Boolean              @default(false)
+  isActive  Boolean              @default(true)
+  version   Int                  @default(1)
+  createdAt DateTime             @default(now())
+  updatedAt DateTime             @updatedAt
 
   tenant       Tenant?       @relation(fields: [tenantId], references: [id])
   reminderJobs ReminderJob[]
@@ -1906,6 +1916,7 @@ model ReminderExecution {
   executedAt    DateTime
   errorMessage  String?
   metadata      Json?
+  metaMessageId String?           @db.VarChar(100)
   createdAt     DateTime          @default(now())
 
   tenant      Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
@@ -1927,5 +1938,78 @@ enum ReminderTemplateType {
   SLEEP_REMINDER
 }
 
+enum ComplianceResponseType {
+  MEAL_COMPLETED
+  MEAL_PARTIAL
+  MEAL_SKIPPED
+  WATER_INTAKE
+  SLEEP_HOURS
+  NO_RESPONSE
+}
 
+enum ComplianceStatus {
+  PENDING
+  COMPLETED
+}
 
+model ClientComplianceEvent {
+  id                     String                 @id @default(cuid())
+  tenantId               String
+  clientId               String
+  automationId           String
+  reminderJobId          String                 @unique
+  templateId             String?
+  templateVersion        Int?
+  responseType           ComplianceResponseType @default(NO_RESPONSE)
+  responseRaw            String?                @db.Text
+  responseValue          Json?
+  responseLatencySeconds Int?
+  source                 String? // "BUTTON" | "TEXT" | "SYSTEM"
+  status                 ComplianceStatus       @default(PENDING)
+  metaMessageId          String?                @db.VarChar(100)
+  mealType               String?
+  mealName               String?
+  mealTime               String?
+  compiledTitle          String?                @db.Text
+  compiledMessage        String?                @db.Text
+  localDate              String // YYYY-MM-DD
+  respondedAt            DateTime?
+  responseWindowClosesAt DateTime
+  createdAt              DateTime               @default(now())
+  updatedAt              DateTime               @updatedAt
+
+  tenant      Tenant             @relation(fields: [tenantId], references: [id])
+  client      Client             @relation(fields: [clientId], references: [id])
+  automation  DietPlanAutomation @relation(fields: [automationId], references: [id], onDelete: Cascade)
+  reminderJob ReminderJob        @relation(fields: [reminderJobId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([tenantId, clientId])
+  @@index([tenantId, clientId, createdAt])
+  @@index([status, responseWindowClosesAt])
+  @@map("client_compliance_events")
+}
+
+model ComplianceDailySummary {
+  id                       String   @id @default(cuid())
+  tenantId                 String
+  clientId                 String
+  date                     DateTime // UTC date at 00:00:00 (client's local date)
+  mealCompliancePercent    Float    @default(0)
+  waterCompliancePercent   Float    @default(0)
+  sleepCompliancePercent   Float    @default(0)
+  overallCompliancePercent Float    @default(0)
+  responseCount            Int      @default(0)
+  noResponseCount          Int      @default(0)
+  currentStreak            Int      @default(0)
+  longestStreak            Int      @default(0)
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  client Client @relation(fields: [clientId], references: [id])
+
+  @@unique([tenantId, clientId, date])
+  @@index([tenantId, clientId])
+  @@map("compliance_daily_summaries")
+}
