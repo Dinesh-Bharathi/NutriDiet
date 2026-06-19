@@ -16,4 +16,18 @@ export const automationValidation = {
       id: z.string().cuid('Invalid automation ID format'),
     }),
   }),
+
+  updateAutomationSettingsSchema: z.object({
+    params: z.object({
+      id: z.string().cuid('Invalid automation ID format'),
+    }),
+    body: z.object({
+      waterEnabled: z.boolean().optional(),
+      waterFrequencyType: z.enum(['FREQUENCY', 'CUSTOM']).optional(),
+      waterIntervalHours: z.number().int().positive().nullable().optional(),
+      waterCustomTimes: z.array(z.string()).nullable().optional(),
+      sleepEnabled: z.boolean().optional(),
+      sleepTime: z.string().nullable().optional(),
+    }),
+  }),
 };

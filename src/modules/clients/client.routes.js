@@ -180,4 +180,11 @@ router.get(
 // Client Vault Sub-Router
 router.use('/:clientId/vault', vaultRoutes);
 
+// ── Client Automations Sub-Routes ───────────────────────────────────────────
+import { automationController } from '../automation/automation.controller.js';
+router.get(
+  '/:clientId/automations',
+  asyncHandler(automationController.getClientAutomations)
+);
+
 export default router;

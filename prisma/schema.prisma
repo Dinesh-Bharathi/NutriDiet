@@ -231,6 +231,8 @@ model Tenant {
   notifications               Notification[]
   dietPlanAutomations         DietPlanAutomation[]
   reminderJobs                ReminderJob[]
+  reminderTemplates           ReminderTemplate[]
+  reminderExecutions          ReminderExecution[]
 
   @@index([slug])
   @@index([status])
@@ -1806,21 +1808,29 @@ model NotificationPreference {
 // ─────────────────────────────────────────────────────────────────────────────
 
 model DietPlanAutomation {
-  id          String           @id @default(cuid())
-  tenantId    String
-  clientId    String
-  dietPlanId  String
-  status      AutomationStatus @default(ACTIVE)
-  activatedAt DateTime?
-  activatedBy String?
-  startDate   DateTime?
-  stoppedAt   DateTime?
-  createdAt   DateTime         @default(now())
-  updatedAt   DateTime         @updatedAt
+  id                  String           @id @default(cuid())
+  tenantId            String
+  clientId            String
+  dietPlanId          String
+  status              AutomationStatus @default(ACTIVE)
+  activatedAt         DateTime?
+  activatedBy         String?
+  startDate           DateTime?
+  stoppedAt           DateTime?
+  version             Int              @default(1)
+  waterEnabled        Boolean          @default(true)
+  waterFrequencyType  String           @default("FREQUENCY") // "FREQUENCY" or "CUSTOM"
+  waterIntervalHours  Int?             @default(2)
+  waterCustomTimes    Json?            // e.g. ["08:00", "12:00", "16:00", "20:00"]
+  sleepEnabled        Boolean          @default(true)
+  sleepTime           String?          @default("22:00")
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
 
-  tenant   Tenant   @relation(fields: [tenantId], references: [id])
-  client   Client   @relation(fields: [clientId], references: [id])
-  dietPlan DietPlan @relation(fields: [dietPlanId], references: [id])
+  tenant       Tenant        @relation(fields: [tenantId], references: [id])
+  client       Client        @relation(fields: [clientId], references: [id])
+  dietPlan     DietPlan      @relation(fields: [dietPlanId], references: [id])
+  reminderJobs ReminderJob[]
 
   @@index([tenantId])
   @@index([tenantId, clientId])
@@ -1830,24 +1840,35 @@ model DietPlanAutomation {
 }
 
 model ReminderJob {
-  id           String            @id @default(cuid())
-  tenantId     String
-  clientId     String
-  dietPlanId   String
-  jobType      ReminderJobType
-  scheduledFor DateTime
-  timezone     String
-  status       ReminderJobStatus @default(PENDING)
-  templateKey  String?
-  mealType     String?
-  executedAt   DateTime?
-  errorText    String?
-  createdAt    DateTime          @default(now())
-  updatedAt    DateTime          @updatedAt
+  id                String             @id @default(cuid())
+  tenantId          String
+  clientId          String
+  automationId      String
+  dietPlanId        String
+  jobType           ReminderJobType
+  scheduledFor      DateTime
+  timezone          String
+  status            ReminderJobStatus  @default(PENDING)
+  channel           ReminderChannel    @default(WHATSAPP)
+  templateId        String?
+  templateVersion   Int?
+  automationVersion Int                @default(1)
+  queueJobId        String?
+  compiledTitle     String?
+  compiledMessage   String?
+  payload           Json?
+  attempts          Int                @default(0)
+  executedAt        DateTime?
+  errorText         String?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
 
-  tenant   Tenant   @relation(fields: [tenantId], references: [id])
-  client   Client   @relation(fields: [clientId], references: [id])
-  dietPlan DietPlan @relation(fields: [dietPlanId], references: [id])
+  tenant     Tenant              @relation(fields: [tenantId], references: [id])
+  client     Client              @relation(fields: [clientId], references: [id])
+  automation DietPlanAutomation  @relation(fields: [automationId], references: [id], onDelete: Cascade)
+  dietPlan   DietPlan            @relation(fields: [dietPlanId], references: [id])
+  template   ReminderTemplate?   @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  executions ReminderExecution[]
 
   @@index([tenantId])
   @@index([tenantId, clientId])
@@ -1855,5 +1876,56 @@ model ReminderJob {
   @@index([tenantId, status])
   @@map("reminder_jobs")
 }
+
+model ReminderTemplate {
+  id           String               @id @default(cuid())
+  tenantId     String?
+  name         String
+  type         ReminderTemplateType
+  title        String
+  message      String               @db.Text
+  buttons      Json?
+  isDefault    Boolean              @default(false)
+  isActive     Boolean              @default(true)
+  version      Int                  @default(1)
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+
+  tenant       Tenant?       @relation(fields: [tenantId], references: [id])
+  reminderJobs ReminderJob[]
+
+  @@index([tenantId])
+  @@map("reminder_templates")
+}
+
+model ReminderExecution {
+  id            String            @id @default(cuid())
+  tenantId      String
+  reminderJobId String
+  status        ReminderJobStatus
+  executedAt    DateTime
+  errorMessage  String?
+  metadata      Json?
+  createdAt     DateTime          @default(now())
+
+  tenant      Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  reminderJob ReminderJob @relation(fields: [reminderJobId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([reminderJobId])
+  @@map("reminder_executions")
+}
+
+enum ReminderChannel {
+  WHATSAPP
+}
+
+enum ReminderTemplateType {
+  MEAL_REMINDER
+  MEAL_FOLLOWUP
+  WATER_REMINDER
+  SLEEP_REMINDER
+}
+
 
 

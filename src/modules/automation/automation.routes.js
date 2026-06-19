@@ -1,0 +1,34 @@
+// src/modules/automation/automation.routes.js
+
+import { Router } from 'express';
+import { automationController } from './automation.controller.js';
+import { authenticate } from '../../middlewares/auth.middleware.js';
+import { resolveTenant } from '../../middlewares/tenant.middleware.js';
+import { requireMinRole } from '../../middlewares/rbac.middleware.js';
+import { ROLES } from '../../config/constants.js';
+import asyncHandler from '../../utils/asyncHandler.js';
+
+const router = Router();
+
+// Secure all automation routes
+router.use(authenticate);
+router.use(resolveTenant);
+router.use(requireMinRole(ROLES.ASSISTANT));
+
+// ── Templates ───────────────────────────────────────────────────────────────
+router.get('/templates', asyncHandler(automationController.getTemplates));
+router.post('/templates', asyncHandler(automationController.createTemplate));
+router.put('/templates/:id', asyncHandler(automationController.updateTemplate));
+router.delete('/templates/:id', asyncHandler(automationController.deleteTemplate));
+router.post('/templates/:id/clone', asyncHandler(automationController.cloneTemplate));
+router.post('/templates/restore', asyncHandler(automationController.restoreDefault));
+
+// ── Jobs ────────────────────────────────────────────────────────────────────
+router.get('/jobs', asyncHandler(automationController.getJobs));
+router.get('/jobs/:id', asyncHandler(automationController.getJobById));
+
+// ── Automations ─────────────────────────────────────────────────────────────
+router.post('/automations/:id/generate', asyncHandler(automationController.regenerateJobs));
+router.put('/automations/:id/settings', asyncHandler(automationController.updateAutomationSettings));
+
+export default router;

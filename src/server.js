@@ -17,6 +17,7 @@ import { browserManager } from "./modules/pdf/puppeteer/browser-manager.js";
 import { initSocketServer } from "./lib/socket.js";
 // Import worker to register it on boot
 import "./modules/whatsapp/workers/webhook-worker.js";
+import { reminderSchedulerService } from "./modules/automation/reminder-scheduler.service.js";
 
 let server;
 
@@ -33,6 +34,7 @@ async function startServer() {
     });
 
     initSocketServer(server);
+    reminderSchedulerService.init();
 
     server.on("error", (err) => {
       if (err.code === "EADDRINUSE") {
@@ -61,6 +63,7 @@ async function gracefulShutdown(signal) {
       logger.info("HTTP server closed");
 
       try {
+        await reminderSchedulerService.shutdown();
         await disconnectDatabase();
         await disconnectRedis();
         await browserManager.shutdown();

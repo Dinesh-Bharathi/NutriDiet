@@ -8,6 +8,39 @@ import prisma from '../../lib/prisma.js';
 import { clinicalProfileService } from '../assessments/clinical-profile.service.js';
 import { automationService } from '../automation/automation.service.js';
 
+// Helper to serialize diet plan schedule for change detection
+function serializeDietPlanSchedule(plan) {
+  if (!plan) return '';
+  const start = plan.startDate ? new Date(plan.startDate).toISOString() : '';
+  const end = plan.endDate ? new Date(plan.endDate).toISOString() : '';
+  
+  const serializeMealsList = (meals) => {
+    if (!meals || !Array.isArray(meals)) return '';
+    return meals.map(m => {
+      const items = m.items 
+        ? m.items.map(it => `${it.foodName || ''}:${it.quantity || 0}:${it.unit || ''}`).sort().join(',') 
+        : '';
+      return `${m.id || ''}:${m.name || ''}:${m.mealTime || ''}:${m.mealOrder || 0}:${items}`;
+    }).sort().join('|');
+  };
+
+  const mealsStr = serializeMealsList(plan.meals);
+  
+  const cyclesStr = plan.cycles ? plan.cycles.map(c => {
+    const daysStr = c.days ? c.days.map(d => {
+      const dMealsStr = serializeMealsList(d.meals);
+      return `${d.dayNumber}:${dMealsStr}`;
+    }).sort().join(';') : '';
+    return `${c.startDay}:${c.endDay}:${daysStr}`;
+  }).sort().join('||') : '';
+
+  return `${start}#${end}#${mealsStr}#${cyclesStr}`;
+}
+
+export function hasSchedulingChanges(oldPlan, newPlan) {
+  return serializeDietPlanSchedule(oldPlan) !== serializeDietPlanSchedule(newPlan);
+}
+
 // Helper to check if a plan is archived
 function checkNotArchived(dietPlan) {
   if (dietPlan && dietPlan.status === 'ARCHIVED') {
@@ -157,6 +190,8 @@ export const dietPlanService = {
         activatedBy: null,
         startDate: updatedPlan.startDate || null,
       });
+    } else if (updatedPlan.status === 'ACTIVE' && hasSchedulingChanges(existing, updatedPlan)) {
+      await automationService.regenerateForPlan(tenantId, id);
     }
     return updatedPlan;
   },
@@ -187,7 +222,11 @@ export const dietPlanService = {
     // Lock archived plans
     checkNotArchived(dietPlan);
 
-    return dietPlanRepository.createMeal(dietPlanId, data);
+    const result = await dietPlanRepository.createMeal(dietPlanId, data);
+    if (dietPlan.status === 'ACTIVE') {
+      await automationService.regenerateForPlan(tenantId, dietPlanId);
+    }
+    return result;
   },
 
   async updateMeal(tenantId, mealId, data) {
@@ -200,7 +239,11 @@ export const dietPlanService = {
     // Lock archived plans
     checkNotArchived(meal.dietPlan);
 
-    return dietPlanRepository.updateMeal(mealId, data);
+    const result = await dietPlanRepository.updateMeal(mealId, data);
+    if (meal.dietPlan?.status === 'ACTIVE') {
+      await automationService.regenerateForPlan(tenantId, meal.dietPlanId);
+    }
+    return result;
   },
 
   async deleteMeal(tenantId, mealId) {
@@ -214,6 +257,9 @@ export const dietPlanService = {
     checkNotArchived(meal.dietPlan);
 
     await dietPlanRepository.deleteMeal(mealId);
+    if (meal.dietPlan?.status === 'ACTIVE') {
+      await automationService.regenerateForPlan(tenantId, meal.dietPlanId);
+    }
   },
 
   // ─── Meal Item Services ────────────────────────────────────────────────────
@@ -244,14 +290,20 @@ export const dietPlanService = {
       data.sourceType = food.sourceType;
     }
 
-    return prisma.$transaction(async (tx) => {
-      const createdItem = await dietPlanRepository.createMealItem(mealId, data, tx);
+    const createdItem = await prisma.$transaction(async (tx) => {
+      const result = await dietPlanRepository.createMealItem(mealId, data, tx);
 
       // Auto-aggregate macros
       await dietPlanRepository.recalculatePlanNutrition(meal.dietPlanId, tx);
 
-      return createdItem;
+      return result;
     });
+
+    if (meal.dietPlan?.status === 'ACTIVE') {
+      await automationService.regenerateForPlan(tenantId, meal.dietPlanId);
+    }
+
+    return createdItem;
   },
 
   async updateMealItem(tenantId, itemId, data) {
@@ -281,14 +333,20 @@ export const dietPlanService = {
       data.sourceType = food.sourceType;
     }
 
-    return prisma.$transaction(async (tx) => {
-      const updatedItem = await dietPlanRepository.updateMealItem(itemId, data, tx);
+    const updatedItem = await prisma.$transaction(async (tx) => {
+      const result = await dietPlanRepository.updateMealItem(itemId, data, tx);
 
       // Auto-aggregate macros
       await dietPlanRepository.recalculatePlanNutrition(item.meal.dietPlanId, tx);
 
-      return updatedItem;
+      return result;
     });
+
+    if (item.meal?.dietPlan?.status === 'ACTIVE') {
+      await automationService.regenerateForPlan(tenantId, item.meal.dietPlanId);
+    }
+
+    return updatedItem;
   },
 
   async deleteMealItem(tenantId, itemId) {
@@ -307,5 +365,9 @@ export const dietPlanService = {
       // Auto-aggregate macros
       await dietPlanRepository.recalculatePlanNutrition(item.meal.dietPlanId, tx);
     });
+
+    if (item.meal?.dietPlan?.status === 'ACTIVE') {
+      await automationService.regenerateForPlan(tenantId, item.meal.dietPlanId);
+    }
   },
 };
