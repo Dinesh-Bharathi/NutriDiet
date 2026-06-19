@@ -1973,6 +1973,7 @@ model ClientComplianceEvent {
   compiledTitle          String?                @db.Text
   compiledMessage        String?                @db.Text
   localDate              String // YYYY-MM-DD
+  scheduledFor           DateTime
   respondedAt            DateTime?
   responseWindowClosesAt DateTime
   createdAt              DateTime               @default(now())

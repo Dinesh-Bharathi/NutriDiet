@@ -139,61 +139,78 @@ export const reminderProcessor = {
       }
 
       const buttons = template?.buttons || [];
+      let metaMessageId = job.sentMetaMessageId;
+      let messageId = null;
 
-      // 4. Live WhatsApp Dispatch
-      const dispatchResult = await whatsappAutomationService.sendAutomationReminder(job.tenantId, {
-        clientId: job.clientId,
-        compiledMessage,
-        buttons,
-        reminderJobId: job.id,
-        jobType: job.jobType,
-      });
+      // 4. Live WhatsApp Dispatch (Idempotency Guard)
+      if (metaMessageId) {
+        logger.info(`[AUTOMATION] Job ${job.id} was already successfully sent in a previous attempt (metaMessageId: ${metaMessageId}). Skipping WhatsApp send.`, logMeta);
+      } else {
+        const dispatchResult = await whatsappAutomationService.sendAutomationReminder(job.tenantId, {
+          clientId: job.clientId,
+          compiledMessage,
+          buttons,
+          reminderJobId: job.id,
+          jobType: job.jobType,
+        });
 
-      if (dispatchResult.skipped) {
-        logger.warn(`[AUTOMATION] Reminder send skipped: ${dispatchResult.reason}. Marking job ${job.id} as CANCELLED.`, logMeta);
+        if (dispatchResult.skipped) {
+          logger.warn(`[AUTOMATION] Reminder send skipped: ${dispatchResult.reason}. Marking job ${job.id} as CANCELLED.`, logMeta);
+          await prisma.reminderJob.update({
+            where: { id: job.id },
+            data: {
+              status: 'CANCELLED',
+              errorText: `Skipped: ${dispatchResult.reason}`,
+            },
+          });
+          return;
+        }
+
+        metaMessageId = dispatchResult.metaMessageId;
+        messageId = dispatchResult.messageId;
+
+        // 5. Create Success ReminderExecution record
+        await prisma.reminderExecution.create({
+          data: {
+            tenantId: job.tenantId,
+            reminderJobId: job.id,
+            status: 'SENT',
+            executedAt: new Date(),
+            metaMessageId,
+            metadata: {
+              attempt: updatedJob.attempts,
+              channel: job.channel,
+              compiledTitle,
+              compiledMessage,
+              whatsAppMessageId: messageId,
+            },
+          },
+        });
+
+        // 6. Update ReminderJob status to SENT and save metaMessageId
         await prisma.reminderJob.update({
           where: { id: job.id },
           data: {
-            status: 'CANCELLED',
-            errorText: `Skipped: ${dispatchResult.reason}`,
+            status: 'SENT',
+            executedAt: new Date(),
+            errorText: null,
+            sentMetaMessageId: metaMessageId,
           },
         });
-        return;
       }
 
-      const { metaMessageId, messageId } = dispatchResult;
-
-      // 5. Create Success ReminderExecution record
-      await prisma.reminderExecution.create({
-        data: {
-          tenantId: job.tenantId,
-          reminderJobId: job.id,
-          status: 'SENT',
-          executedAt: new Date(),
-          metaMessageId,
-          metadata: {
-            attempt: updatedJob.attempts,
-            channel: job.channel,
-            compiledTitle,
-            compiledMessage,
-            whatsAppMessageId: messageId,
-          },
-        },
+      // 7. Get or Create Compliance Event
+      let complianceEvent = await prisma.clientComplianceEvent.findUnique({
+        where: { reminderJobId: job.id },
       });
 
-      // 6. Update ReminderJob status to SENT
-      const sentJob = await prisma.reminderJob.update({
-        where: { id: job.id },
-        data: {
-          status: 'SENT',
-          executedAt: new Date(),
-          errorText: null,
-          sentMetaMessageId: metaMessageId,
-        },
-      });
-
-      // 7. Create Compliance Event
-      const complianceEvent = await complianceService.createComplianceEvent(prisma, sentJob);
+      if (complianceEvent) {
+        logger.info(`[AUTOMATION] Compliance event already exists for job ${job.id} (eventId: ${complianceEvent.id}). Skipping creation.`, logMeta);
+      } else {
+        // Fetch latest job details to ensure we pass updated SENT status and sentMetaMessageId
+        const currentJob = await prisma.reminderJob.findUnique({ where: { id: job.id } });
+        complianceEvent = await complianceService.createComplianceEvent(prisma, currentJob);
+      }
 
       // 8. Queue Compliance Timeout BullMQ delayed job
       const delayMs = complianceEvent.responseWindowClosesAt.getTime() - Date.now();
@@ -211,7 +228,16 @@ export const reminderProcessor = {
         }
       );
 
-      logger.info(`[AUTOMATION] Successfully dispatched reminder, created event ${complianceEvent.id}, and scheduled timeout job.`, logMeta);
+      // Final status sync to ensure job remains SENT in database
+      await prisma.reminderJob.update({
+        where: { id: job.id },
+        data: {
+          status: 'SENT',
+          errorText: null,
+        },
+      });
+
+      logger.info(`[AUTOMATION] Successfully processed reminder, created/retrieved event ${complianceEvent.id}, and scheduled timeout job.`, logMeta);
 
     } catch (err) {
       logger.error(`[REMINDER_FAILURE] Failed to process job ${job.id}: ${err.message}`, {

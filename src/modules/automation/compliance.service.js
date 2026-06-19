@@ -186,7 +186,7 @@ export const complianceService = {
         e.reminderJob.jobType === 'MEAL_FOLLOWUP'
     );
 
-    let mealCompliancePercent = 100;
+    let mealCompliancePercent = 0;
     if (mealEvents.length > 0) {
       // Group by mealName (e.g. Breakfast, Lunch, Dinner)
       const mealsMap = new Map();
@@ -220,7 +220,7 @@ export const complianceService = {
       (e) => e.reminderJob.jobType === 'WATER_REMINDER'
     );
 
-    let waterCompliancePercent = 100;
+    let waterCompliancePercent = 0;
     if (waterEvents.length > 0) {
       let totalWaterScore = 0;
       for (const e of waterEvents) {
@@ -239,7 +239,7 @@ export const complianceService = {
       (e) => e.reminderJob.jobType === 'SLEEP_REMINDER'
     );
 
-    let sleepCompliancePercent = 100;
+    let sleepCompliancePercent = 0;
     if (sleepEvents.length > 0) {
       let totalSleepScore = 0;
       for (const e of sleepEvents) {
@@ -259,7 +259,7 @@ export const complianceService = {
     let sleepWeight = sleepEvents.length > 0 ? 0.15 : 0.0;
     const sumWeights = mealWeight + waterWeight + sleepWeight;
 
-    let overallCompliancePercent = 100;
+    let overallCompliancePercent = 0;
     if (sumWeights > 0) {
       overallCompliancePercent =
         (mealCompliancePercent * mealWeight +
@@ -398,14 +398,14 @@ export const complianceService = {
 
     if (summaries.length === 0) {
       return {
-        overallRate: 100,
-        mealAdherence: 100,
-        waterAdherence: 100,
-        sleepAdherence: 100,
-        avgResponseLatencyMinutes: 0,
+        overallRate: null,
+        mealAdherence: null,
+        waterAdherence: null,
+        sleepAdherence: null,
+        avgResponseLatencyMinutes: null,
         currentStreak: 0,
         longestStreak: 0,
-        noResponseRate: 0,
+        noResponseRate: null,
         mostMissedMeal: 'N/A',
         trends: {
           weekly: [],
