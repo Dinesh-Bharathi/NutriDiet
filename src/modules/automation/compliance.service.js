@@ -160,11 +160,12 @@ export const complianceService = {
   async aggregateDailySummary(tenantId, clientId, localDateStr) {
     const targetDate = new Date(`${localDateStr}T00:00:00.000Z`);
 
-    // Get all events for the day
+    // Get all events for the day (excluding archived jobs)
     const events = await prisma.clientComplianceEvent.findMany({
       where: {
         clientId,
         localDate: localDateStr,
+        reminderJob: { isArchived: false },
       },
       include: {
         reminderJob: true,
@@ -187,6 +188,9 @@ export const complianceService = {
     );
 
     let mealCompliancePercent = 0;
+    let mealsTotal = 0;
+    let mealsCompleted = 0;
+
     if (mealEvents.length > 0) {
       // Group by mealName (e.g. Breakfast, Lunch, Dinner)
       const mealsMap = new Map();
@@ -198,20 +202,27 @@ export const complianceService = {
         mealsMap.get(e.mealName).push(e);
       }
 
-      const uniqueScheduledMealsCount = mealsMap.size;
-      if (uniqueScheduledMealsCount > 0) {
+      mealsTotal = mealsMap.size;
+      if (mealsTotal > 0) {
         let totalMealScore = 0;
         for (const [mealName, mealEvs] of mealsMap.entries()) {
           let bestScore = 0;
+          let isMealCompleted = false;
           for (const ev of mealEvs) {
             let score = 0;
             if (ev.responseType === 'MEAL_COMPLETED') score = 1.0;
             else if (ev.responseType === 'MEAL_PARTIAL') score = 0.5;
             bestScore = Math.max(bestScore, score);
+            if (ev.responseType === 'MEAL_COMPLETED' || ev.responseType === 'MEAL_PARTIAL') {
+              isMealCompleted = true;
+            }
           }
           totalMealScore += bestScore;
+          if (isMealCompleted) {
+            mealsCompleted++;
+          }
         }
-        mealCompliancePercent = (totalMealScore / uniqueScheduledMealsCount) * 100;
+        mealCompliancePercent = (totalMealScore / mealsTotal) * 100;
       }
     }
 
@@ -221,6 +232,9 @@ export const complianceService = {
     );
 
     let waterCompliancePercent = 0;
+    const waterTotal = waterEvents.length;
+    let waterCompleted = 0;
+
     if (waterEvents.length > 0) {
       let totalWaterScore = 0;
       for (const e of waterEvents) {
@@ -229,6 +243,7 @@ export const complianceService = {
           const range = valObj.waterRange || '1-2L';
           const weight = (AUTOMATION_CONFIG.SCORING_WEIGHTS.WATER[range] ?? 100) / 100;
           totalWaterScore += weight;
+          waterCompleted++;
         }
       }
       waterCompliancePercent = (totalWaterScore / waterEvents.length) * 100;
@@ -240,6 +255,9 @@ export const complianceService = {
     );
 
     let sleepCompliancePercent = 0;
+    const sleepTotal = sleepEvents.length;
+    let sleepCompleted = 0;
+
     if (sleepEvents.length > 0) {
       let totalSleepScore = 0;
       for (const e of sleepEvents) {
@@ -248,6 +266,7 @@ export const complianceService = {
           const range = valObj.sleepRange || '7-8H';
           const weight = (AUTOMATION_CONFIG.SCORING_WEIGHTS.SLEEP[range] ?? 100) / 100;
           totalSleepScore += weight;
+          sleepCompleted++;
         }
       }
       sleepCompliancePercent = (totalSleepScore / sleepEvents.length) * 100;
@@ -292,6 +311,12 @@ export const complianceService = {
         overallCompliancePercent,
         responseCount,
         noResponseCount,
+        mealsCompleted,
+        mealsTotal,
+        waterCompleted,
+        waterTotal,
+        sleepCompleted,
+        sleepTotal,
       },
       create: {
         tenantId,
@@ -303,6 +328,12 @@ export const complianceService = {
         overallCompliancePercent,
         responseCount,
         noResponseCount,
+        mealsCompleted,
+        mealsTotal,
+        waterCompleted,
+        waterTotal,
+        sleepCompleted,
+        sleepTotal,
       },
     });
 
@@ -376,6 +407,12 @@ export const complianceService = {
       eventCount: s.responseCount + s.noResponseCount,
       responseCount: s.responseCount,
       noResponseCount: s.noResponseCount,
+      mealsCompleted: s.mealsCompleted,
+      mealsTotal: s.mealsTotal,
+      waterCompleted: s.waterCompleted,
+      waterTotal: s.waterTotal,
+      sleepCompleted: s.sleepCompleted,
+      sleepTotal: s.sleepTotal,
     }));
   },
 
@@ -426,12 +463,13 @@ export const complianceService = {
     const currentStreak = latestSummary?.currentStreak || 0;
     const longestStreak = latestSummary?.longestStreak || 0;
 
-    // Latency and Missed Meals need compliance events
+    // Latency and Missed Meals need compliance events (excluding archived jobs)
     const events = await prisma.clientComplianceEvent.findMany({
       where: {
         clientId,
         tenantId,
         createdAt: { gte: startDate },
+        reminderJob: { isArchived: false },
       },
     });
 
@@ -529,9 +567,13 @@ export const complianceService = {
    * Paginated compliance events list.
    */
   async getEvents(tenantId, clientId, page = 1, limit = 20, jobType = null, localDate = null) {
-    const where = { tenantId, clientId };
+    const where = {
+      tenantId,
+      clientId,
+      reminderJob: { isArchived: false },
+    };
     if (jobType) {
-      where.reminderJob = { jobType };
+      where.reminderJob.jobType = jobType;
     }
     if (localDate) {
       where.localDate = localDate;
@@ -551,19 +593,43 @@ export const complianceService = {
     });
 
     return {
-      events: events.map((e) => ({
-        id: e.id,
-        jobType: e.reminderJob.jobType,
-        scheduledFor: e.scheduledFor,
-        outcome: e.responseType === 'NO_RESPONSE' ? 'NO_RESPONSE' : e.status === 'PENDING' ? 'PENDING' : e.responseType,
-        mealType: e.mealType,
-        mealName: e.mealName,
-        mealTime: e.mealTime,
-        respondedAt: e.respondedAt,
-        responseRaw: e.responseRaw,
-        responseSource: e.source,
-        latencyMinutes: e.responseLatencySeconds ? parseFloat((e.responseLatencySeconds / 60).toFixed(1)) : null,
-      })),
+      events: events.map((e) => {
+        let complianceScore = 0.0;
+        if (e.reminderJob.jobType === 'MEAL_REMINDER' || e.reminderJob.jobType === 'MEAL_FOLLOWUP') {
+          if (e.responseType === 'MEAL_COMPLETED') complianceScore = 1.0;
+          else if (e.responseType === 'MEAL_PARTIAL') complianceScore = 0.5;
+        } else if (e.reminderJob.jobType === 'WATER_REMINDER') {
+          if (e.responseType === 'WATER_INTAKE') {
+            const valObj = e.responseValue || {};
+            const range = valObj.waterRange || '1-2L';
+            complianceScore = (AUTOMATION_CONFIG.SCORING_WEIGHTS.WATER[range] ?? 100) / 100;
+          }
+        } else if (e.reminderJob.jobType === 'SLEEP_REMINDER') {
+          if (e.responseType === 'SLEEP_HOURS') {
+            const valObj = e.responseValue || {};
+            const range = valObj.sleepRange || '7-8H';
+            complianceScore = (AUTOMATION_CONFIG.SCORING_WEIGHTS.SLEEP[range] ?? 100) / 100;
+          }
+        }
+
+        return {
+          id: e.id,
+          jobType: e.reminderJob.jobType,
+          scheduledFor: e.scheduledFor,
+          outcome: e.responseType === 'NO_RESPONSE' ? 'NO_RESPONSE' : e.status === 'PENDING' ? 'PENDING' : e.responseType,
+          mealType: e.mealType,
+          mealName: e.mealName,
+          mealTime: e.mealTime,
+          respondedAt: e.respondedAt,
+          responseRaw: e.responseRaw,
+          responseValue: e.responseValue,
+          responseSource: e.source,
+          compiledTitle: e.compiledTitle,
+          compiledMessage: e.compiledMessage,
+          latencyMinutes: e.responseLatencySeconds ? parseFloat((e.responseLatencySeconds / 60).toFixed(1)) : null,
+          complianceScore,
+        };
+      }),
       pagination: {
         page,
         limit,

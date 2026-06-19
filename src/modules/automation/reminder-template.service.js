@@ -5,62 +5,127 @@ import ApiError from '../../utils/ApiError.js';
 import logger from '../../utils/logger.js';
 import { validateTemplateText, automationTemplateRegistry } from './automation-template-variables.js';
 import { reminderQueue } from './reminder-queue.js';
+import { reminderProducer } from './reminder-producer.js';
+import { reminderGeneratorService } from './reminder-generator.service.js';
 
 export const reminderTemplateService = {
   /**
    * Seeds global system defaults if they do not exist.
    */
   async seedSystemTemplates() {
-    const count = await prisma.reminderTemplate.count({
-      where: { tenantId: null, isDefault: true },
-    });
-    if (count > 0) return;
+    const defaults = [
+      {
+        tenantId: null,
+        name: 'System Default Meal Reminder',
+        type: 'MEAL_REMINDER',
+        title: '🍽️ Time for {{meal_name}}',
+        message: 'Hi {{client_name}},\n\nYour meal is scheduled in 5 minutes.\n\n📋 Today\'s Meal\n\n{{meal_summary}}\n\n⏰ Scheduled Time:\n{{meal_time}}\n\nPlease complete your meal and choose an option below.\n\n— {{clinic_name}}',
+        buttons: [
+          { id: 'v1_meal_complete', text: '✅ Completed' },
+          { id: 'v1_meal_later', text: '⏰ Remind Me Later' },
+          { id: 'v1_meal_skip', text: '❌ Skip Meal' }
+        ],
+        templateButtons: [
+          { id: 'v1_meal_complete', text: '✅ Completed' },
+          { id: 'v1_meal_later', text: '⏰ Remind Me Later' },
+          { id: 'v1_meal_skip', text: '❌ Skip Meal' }
+        ],
+        buttonVersion: 1,
+        isDefault: true,
+        isActive: true,
+        version: 1,
+      },
+      {
+        tenantId: null,
+        name: 'System Default Meal Follow-Up',
+        type: 'MEAL_FOLLOWUP',
+        title: '👋 Quick Check-In',
+        message: 'Did you complete your {{meal_name}}?\n\n📋 Meal\n\n{{meal_summary}}\n\n⏰ Scheduled:\n{{meal_time}}\n\nYour response helps us track your adherence.\n\n— {{clinic_name}}',
+        buttons: [
+          { id: 'v1_meal_complete', text: '✅ Completed' },
+          { id: 'v1_meal_partial', text: '🍽️ Modified Meal' },
+          { id: 'v1_meal_skip', text: '❌ Skipped' }
+        ],
+        templateButtons: [
+          { id: 'v1_meal_complete', text: '✅ Completed' },
+          { id: 'v1_meal_partial', text: '🍽️ Modified Meal' },
+          { id: 'v1_meal_skip', text: '❌ Skipped' }
+        ],
+        buttonVersion: 1,
+        isDefault: true,
+        isActive: true,
+        version: 1,
+      },
+      {
+        tenantId: null,
+        name: 'System Default Water Reminder',
+        type: 'WATER_REMINDER',
+        title: '💧 Hydration Check',
+        message: 'How much water have you consumed today?\n\nPlease select the closest option below.\n\n— {{clinic_name}}',
+        buttons: [
+          { id: 'v1_water_lt1', text: '🥤 Less than 1L' },
+          { id: 'v1_water_1_2', text: '💧 1–2L' },
+          { id: 'v1_water_2_3', text: '🚰 2–3L' },
+          { id: 'v1_water_gt3', text: '🌊 More than 3L' }
+        ],
+        templateButtons: [
+          { id: 'v1_water_lt1', text: '🥤 Less than 1L' },
+          { id: 'v1_water_1_2', text: '💧 1–2L' },
+          { id: 'v1_water_2_3', text: '🚰 2–3L' },
+          { id: 'v1_water_gt3', text: '🌊 More than 3L' }
+        ],
+        buttonVersion: 1,
+        isDefault: true,
+        isActive: true,
+        version: 1,
+      },
+      {
+        tenantId: null,
+        name: 'System Default Sleep Reminder',
+        type: 'SLEEP_REMINDER',
+        title: '😴 Sleep Check-In',
+        message: 'How many hours did you sleep last night?\n\nPlease select your answer below.\n\n— {{clinic_name}}',
+        buttons: [
+          { id: 'v1_sleep_lt5', text: '😪 Less than 5 hrs' },
+          { id: 'v1_sleep_5_6', text: '🙂 5–7 hrs' },
+          { id: 'v1_sleep_7_8', text: '😃 7–9 hrs' },
+          { id: 'v1_sleep_gt8', text: '💪 More than 9 hrs' }
+        ],
+        templateButtons: [
+          { id: 'v1_sleep_lt5', text: '😪 Less than 5 hrs' },
+          { id: 'v1_sleep_5_6', text: '🙂 5–7 hrs' },
+          { id: 'v1_sleep_7_8', text: '😃 7–9 hrs' },
+          { id: 'v1_sleep_gt8', text: '💪 More than 9 hrs' }
+        ],
+        buttonVersion: 1,
+        isDefault: true,
+        isActive: true,
+        version: 1,
+      }
+    ];
 
-    logger.info('[AUTOMATION] Seeding global system defaults...');
-    await prisma.reminderTemplate.createMany({
-      data: [
-        {
-          tenantId: null,
-          name: 'System Default Meal Reminder',
-          type: 'MEAL_REMINDER',
-          title: '🍽️ {{meal_name}} Reminder',
-          message: 'Hi {{client_name}},\n\nYour {{meal_name}} is scheduled in 5 minutes.\n\nStay consistent 💪',
-          isDefault: true,
-          isActive: true,
-          version: 1,
-        },
-        {
-          tenantId: null,
-          name: 'System Default Meal Follow-Up',
-          type: 'MEAL_FOLLOWUP',
-          title: 'How was your {{meal_name}}?',
-          message: 'How was your {{meal_name}}?\n\nWe\'ll ask for your response shortly.',
-          isDefault: true,
-          isActive: true,
-          version: 1,
-        },
-        {
-          tenantId: null,
-          name: 'System Default Water Reminder',
-          type: 'WATER_REMINDER',
-          title: '💧 Water Intake Reminder',
-          message: '💧 Water Intake Reminder\n\nRemember to stay hydrated.',
-          isDefault: true,
-          isActive: true,
-          version: 1,
-        },
-        {
-          tenantId: null,
-          name: 'System Default Sleep Reminder',
-          type: 'SLEEP_REMINDER',
-          title: '😴 Sleep Tracking Reminder',
-          message: '😴 Sleep Tracking Reminder\n\nHow many hours did you sleep yesterday?',
-          isDefault: true,
-          isActive: true,
-          version: 1,
-        },
-      ],
-    });
+    logger.info('[AUTOMATION] Syncing global system defaults...');
+    for (const data of defaults) {
+      const existing = await prisma.reminderTemplate.findFirst({
+        where: { tenantId: null, type: data.type, isDefault: true },
+      });
+      if (existing) {
+        await prisma.reminderTemplate.update({
+          where: { id: existing.id },
+          data: {
+            name: data.name,
+            title: data.title,
+            message: data.message,
+            buttons: data.buttons,
+            templateButtons: data.templateButtons,
+          },
+        });
+      } else {
+        await prisma.reminderTemplate.create({
+          data,
+        });
+      }
+    }
   },
 
   /**
@@ -69,21 +134,77 @@ export const reminderTemplateService = {
    * @param {string} tenantId
    * @returns {Promise<Array>}
    */
-  async getTemplates(tenantId) {
+  /**
+   * Lists all templates available to a tenant (both system defaults and tenant customized) with pagination and filters.
+   *
+   * @param {string} tenantId
+   * @param {object} filters - { page, limit, search, type, status }
+   * @returns {Promise<object>} { templates, total, page, limit }
+   */
+  async getTemplates(tenantId, filters = {}) {
     await this.seedSystemTemplates();
 
-    return prisma.reminderTemplate.findMany({
-      where: {
-        OR: [
-          { tenantId },
-          { tenantId: null },
-        ],
-      },
-      orderBy: [
-        { isDefault: 'desc' },
-        { createdAt: 'asc' },
+    const page = parseInt(filters.page, 10) || 1;
+    const limit = parseInt(filters.limit, 10) || 100;
+    const skip = (page - 1) * limit;
+
+    const where = {
+      OR: [
+        { tenantId },
+        { tenantId: null },
       ],
-    });
+    };
+
+    if (filters.type && filters.type !== 'ALL') {
+      where.type = filters.type;
+    }
+
+    if (filters.search) {
+      where.name = {
+        contains: filters.search,
+        mode: 'insensitive',
+      };
+    }
+
+    if (filters.status) {
+      if (filters.status === 'ACTIVE') {
+        where.isActive = true;
+      } else if (filters.status === 'INACTIVE') {
+        where.isActive = false;
+      } else if (filters.status === 'SYSTEM') {
+        where.isDefault = true;
+      } else if (filters.status === 'CLINIC') {
+        where.isDefault = false;
+      }
+    }
+
+    if (filters.source) {
+      if (filters.source === 'SYSTEM') {
+        where.isDefault = true;
+      } else if (filters.source === 'CLINIC') {
+        where.isDefault = false;
+      }
+    }
+
+    const [templates, total] = await Promise.all([
+      prisma.reminderTemplate.findMany({
+        where,
+        orderBy: [
+          { isDefault: 'desc' },
+          { createdAt: 'asc' },
+        ],
+        skip,
+        take: limit,
+      }),
+      prisma.reminderTemplate.count({ where }),
+    ]);
+
+    return {
+      templates,
+      total,
+      page,
+      limit,
+    };
   },
 
   /**
@@ -122,6 +243,9 @@ export const reminderTemplateService = {
     validateTemplateText(data.title);
     validateTemplateText(data.message);
 
+    const templateButtons = data.templateButtons || data.buttons || null;
+    const buttons = data.buttons || data.templateButtons || null;
+
     // Enforce tenant boundary
     return prisma.reminderTemplate.create({
       data: {
@@ -130,10 +254,13 @@ export const reminderTemplateService = {
         type: data.type,
         title: data.title,
         message: data.message,
-        buttons: data.buttons || null,
+        buttons,
+        templateButtons,
+        buttonVersion: 1,
         isDefault: false,
         isActive: data.isActive !== undefined ? data.isActive : true,
         version: 1,
+        config: data.config !== undefined ? data.config : null,
       },
     });
   },
@@ -160,15 +287,24 @@ export const reminderTemplateService = {
     validateTemplateText(data.title);
     validateTemplateText(data.message);
 
+    const templateButtons = data.templateButtons !== undefined ? data.templateButtons : (data.buttons !== undefined ? data.buttons : template.templateButtons);
+    const buttons = data.buttons !== undefined ? data.buttons : (data.templateButtons !== undefined ? data.templateButtons : template.buttons);
+    
+    const buttonsChanged = JSON.stringify(buttons) !== JSON.stringify(template.buttons);
+    const buttonVersion = buttonsChanged ? template.buttonVersion + 1 : template.buttonVersion;
+
     const updated = await prisma.reminderTemplate.update({
       where: { id },
       data: {
         name: data.name,
         title: data.title,
         message: data.message,
-        buttons: data.buttons || null,
+        buttons,
+        templateButtons,
+        buttonVersion,
         isActive: data.isActive !== undefined ? data.isActive : template.isActive,
         version: { increment: 1 },
+        config: data.config !== undefined ? data.config : template.config,
       },
     });
 
@@ -231,6 +367,8 @@ export const reminderTemplateService = {
           title: template.title,
           message: template.message,
           buttons: template.buttons || null,
+          templateButtons: template.templateButtons || template.buttons || null,
+          buttonVersion: template.buttonVersion || 1,
           isDefault: false,
           isActive: true,
           version: 1,
@@ -376,7 +514,152 @@ export const reminderTemplateService = {
     }
 
     logger.info(`[AUTOMATION] Completed template propagation for type: ${templateType}`);
-  }
+  },
+
+  /**
+   * Calculates the impact of disabling a specific reminder template.
+   * Returns counts of affected pending reminder jobs and active client sessions.
+   *
+   * @param {string} tenantId
+   * @param {string} id
+   * @returns {Promise<object>}
+   */
+  async getTemplateDisableImpact(tenantId, id) {
+    const template = await this.getTemplateById(tenantId, id);
+
+    // Count pending, future reminders using this template
+    const pendingRemindersCount = await prisma.reminderJob.count({
+      where: {
+        tenantId,
+        templateId: template.id,
+        status: 'PENDING',
+        scheduledFor: { gt: new Date() },
+        isArchived: false,
+      },
+    });
+
+    let automationWhere = {
+      tenantId,
+      status: 'ACTIVE',
+    };
+    if (template.type === 'WATER_REMINDER') {
+      automationWhere.waterEnabled = true;
+    } else if (template.type === 'SLEEP_REMINDER') {
+      automationWhere.sleepEnabled = true;
+    }
+
+    const affectedAutomations = await prisma.dietPlanAutomation.findMany({
+      where: automationWhere,
+      select: { clientId: true },
+    });
+
+    const activeClientsCount = new Set(affectedAutomations.map(a => a.clientId)).size;
+
+    return {
+      pendingRemindersCount,
+      activeClientsCount,
+      affectedAutomationsCount: affectedAutomations.length,
+    };
+  },
+
+  /**
+   * Toggles a template's active state.
+   * On deactivation, cancels and archives future pending reminders.
+   * On activation, deactivates other overrides of same type and regenerates future jobs.
+   *
+   * @param {string} tenantId
+   * @param {string} id
+   * @param {boolean} isActive
+   * @returns {Promise<object>}
+   */
+  async toggleTemplateActive(tenantId, id, isActive) {
+    const template = await this.getTemplateById(tenantId, id);
+
+    if (template.tenantId === null || template.isDefault) {
+      throw ApiError.badRequest('System default templates cannot be disabled or activated manually.');
+    }
+
+    if (!isActive) {
+      // 1. Deactivate template
+      const updated = await prisma.reminderTemplate.update({
+        where: { id },
+        data: { isActive: false },
+      });
+
+      // 2. Fetch pending future jobs using this template
+      const pendingJobs = await prisma.reminderJob.findMany({
+        where: {
+          tenantId,
+          templateId: id,
+          status: 'PENDING',
+          scheduledFor: { gt: new Date() },
+          isArchived: false,
+        },
+        select: { id: true, queueJobId: true },
+      });
+
+      if (pendingJobs.length > 0) {
+        // 3. Mark them as CANCELLED and isArchived
+        await prisma.reminderJob.updateMany({
+          where: { id: { in: pendingJobs.map(j => j.id) } },
+          data: {
+            status: 'CANCELLED',
+            isArchived: true,
+            errorText: 'Cancelled due to template deactivation',
+          },
+        });
+
+        // 4. Cancel BullMQ jobs
+        for (const job of pendingJobs) {
+          if (job.queueJobId) {
+            await reminderProducer.cancelJob(job.queueJobId);
+          }
+        }
+      }
+
+      return updated;
+    } else {
+      // Activation: Deactivate other custom templates and activate this one
+      const updated = await prisma.$transaction(async (tx) => {
+        await tx.reminderTemplate.updateMany({
+          where: {
+            tenantId,
+            type: template.type,
+            isDefault: false,
+          },
+          data: { isActive: false },
+        });
+
+        return tx.reminderTemplate.update({
+          where: { id },
+          data: { isActive: true },
+        });
+      });
+
+      // Fetch affected active automations
+      let automationWhere = {
+        tenantId,
+        status: 'ACTIVE',
+      };
+      if (template.type === 'WATER_REMINDER') {
+        automationWhere.waterEnabled = true;
+      } else if (template.type === 'SLEEP_REMINDER') {
+        automationWhere.sleepEnabled = true;
+      }
+
+      const affectedAutomations = await prisma.dietPlanAutomation.findMany({
+        where: automationWhere,
+        select: { id: true },
+      });
+
+      // Regenerate future reminders for these sessions
+      for (const aut of affectedAutomations) {
+        await reminderGeneratorService.generateJobs(tenantId, aut.id);
+      }
+
+      return updated;
+    }
+  },
 };
 
 export default reminderTemplateService;

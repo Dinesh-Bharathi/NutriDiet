@@ -132,12 +132,34 @@ export const clientRepository = {
     }
 
     if (search) {
-      where.OR = [
+      const searchParts = search.trim().split(/\s+/);
+      const isFullNameSearch = searchParts.length > 1;
+
+      const orConditions = [
         { firstName: { contains: search, mode: 'insensitive' } },
         { lastName: { contains: search, mode: 'insensitive' } },
         { email: { contains: search, mode: 'insensitive' } },
         { phone: { contains: search, mode: 'insensitive' } },
       ];
+
+      if (isFullNameSearch) {
+        const first = searchParts[0];
+        const last = searchParts.slice(1).join(' ');
+        orConditions.push({
+          AND: [
+            { firstName: { contains: first, mode: 'insensitive' } },
+            { lastName: { contains: last, mode: 'insensitive' } },
+          ],
+        });
+        orConditions.push({
+          AND: [
+            { firstName: { contains: last, mode: 'insensitive' } },
+            { lastName: { contains: first, mode: 'insensitive' } },
+          ],
+        });
+      }
+
+      where.OR = orConditions;
     }
 
     const skip = (page - 1) * limit;

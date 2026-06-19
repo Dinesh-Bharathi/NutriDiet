@@ -14,10 +14,29 @@ export const automationController = {
 
   async getTemplates(req, res) {
     const { tenantId } = req.user;
-    const templates = await reminderTemplateService.getTemplates(tenantId);
+    const { page, limit, search, type, status, source } = req.query;
+    const result = await reminderTemplateService.getTemplates(tenantId, {
+      page,
+      limit,
+      search,
+      type,
+      status,
+      source,
+    });
     res.status(HTTP_STATUS.OK).json({
       success: true,
-      data: templates,
+      data: result,
+    });
+  },
+
+  async getPlaceholders(req, res) {
+    const { PLACEHOLDERS_REGISTRY } = await import('./automation-template-variables.js');
+    res.status(HTTP_STATUS.OK).json({
+      success: true,
+      data: {
+        version: 1,
+        placeholders: PLACEHOLDERS_REGISTRY,
+      },
     });
   },
 
@@ -86,6 +105,7 @@ export const automationController = {
       startDate,
       endDate,
       timezone,
+      isArchived = 'false',
       page = 1,
       limit = 10,
     } = req.query;
@@ -106,6 +126,16 @@ export const automationController = {
       where.scheduledFor = {};
       if (startDate) where.scheduledFor.gte = new Date(startDate);
       if (endDate) where.scheduledFor.lte = new Date(endDate);
+    }
+
+    if (isArchived === 'true') {
+      where.isArchived = true;
+    } else if (isArchived === 'false') {
+      where.isArchived = false;
+    } else if (isArchived === 'all') {
+      // No filter on isArchived
+    } else {
+      where.isArchived = false;
     }
 
     const [jobs, total] = await Promise.all([
@@ -140,6 +170,10 @@ export const automationController = {
       failed: 0,
       completed: 0,
       deadLetter: 0,
+      oldestPendingJobScheduledFor: null,
+      averageProcessingTimeMs: 0,
+      failedCount24h: 0,
+      activeWorkers: 0,
     };
 
     try {
@@ -149,8 +183,46 @@ export const automationController = {
         reminderQueue.getDelayedCount(),
         reminderQueue.getFailedCount(),
         reminderQueue.getCompletedCount(),
-        reminderDeadLetterQueue.getJobCountByTypes('completed', 'wait', 'active', 'delayed', 'failed'),
+        reminderDeadLetterQueue.getJobCountByTypes('completed', 'wait', 'active', 'delayed', 'failed').catch(() => 0),
       ]);
+
+      // Calculate Oldest Pending Job
+      const oldestPending = await prisma.reminderJob.findFirst({
+        where: { tenantId, status: 'PENDING', isArchived: false },
+        orderBy: { scheduledFor: 'asc' },
+        select: { scheduledFor: true },
+      });
+
+      // Calculate Average Processing Latency over last 100 sent jobs
+      const recentSent = await prisma.reminderJob.findMany({
+        where: { tenantId, status: 'SENT', executedAt: { not: null } },
+        take: 100,
+        orderBy: { executedAt: 'desc' },
+        select: { scheduledFor: true, executedAt: true }
+      });
+      let averageProcessingTimeMs = 0;
+      if (recentSent.length > 0) {
+        const sum = recentSent.reduce((acc, job) => acc + (job.executedAt.getTime() - job.scheduledFor.getTime()), 0);
+        averageProcessingTimeMs = Math.round(sum / recentSent.length);
+      }
+
+      // Calculate Failed Jobs (24h)
+      const failedCount24h = await prisma.reminderJob.count({
+        where: {
+          tenantId,
+          status: 'FAILED',
+          updatedAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) }
+        }
+      });
+
+      // Fetch Active queue workers count
+      let activeWorkersCount = 0;
+      try {
+        const workers = await reminderQueue.getWorkers();
+        activeWorkersCount = workers.length;
+      } catch (err) {
+        // Fallback
+      }
 
       queueMetrics = {
         waiting,
@@ -159,6 +231,10 @@ export const automationController = {
         failed,
         completed,
         deadLetter: dlqCount,
+        oldestPendingJobScheduledFor: oldestPending?.scheduledFor || null,
+        averageProcessingTimeMs,
+        failedCount24h,
+        activeWorkers: activeWorkersCount,
       };
     } catch (err) {
       logger.error(`[REMINDER_FAILURE] Failed to query BullMQ metrics: ${err.message}`);
@@ -220,6 +296,16 @@ export const automationController = {
     });
   },
 
+  async generatePreview(req, res) {
+    const { tenantId } = req.user;
+    const { id } = req.params; // Automation ID
+    const counts = await reminderGeneratorService.generateJobs(tenantId, id, { dryRun: true });
+    res.status(HTTP_STATUS.OK).json({
+      success: true,
+      data: counts,
+    });
+  },
+
   async getClientAutomations(req, res) {
     const { tenantId } = req.user;
     const { clientId } = req.params;
@@ -237,6 +323,191 @@ export const automationController = {
     res.status(HTTP_STATUS.OK).json({
       success: true,
       data: updated,
+    });
+  },
+
+  async getDisableImpact(req, res) {
+    const { tenantId } = req.user;
+    const { id } = req.params;
+    const impact = await reminderTemplateService.getTemplateDisableImpact(tenantId, id);
+    res.status(HTTP_STATUS.OK).json({
+      success: true,
+      data: impact,
+    });
+  },
+
+  async toggleTemplateActive(req, res) {
+    const { tenantId } = req.user;
+    const { id } = req.params;
+    const { isActive } = req.body;
+    if (isActive === undefined) {
+      throw ApiError.badRequest('isActive is required');
+    }
+    const updated = await reminderTemplateService.toggleTemplateActive(tenantId, id, isActive);
+    res.status(HTTP_STATUS.OK).json({
+      success: true,
+      data: updated,
+    });
+  },
+
+  async getReminderConfig(req, res) {
+    const { tenantId } = req.user;
+    const tenant = await prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { reminderConfig: true },
+    });
+    res.status(HTTP_STATUS.OK).json({
+      success: true,
+      data: tenant?.reminderConfig || {},
+    });
+  },
+
+  async updateReminderConfig(req, res) {
+    const { tenantId } = req.user;
+    const config = req.body;
+
+    // Validate config
+    if (config.mealReminderOffsetMinutes !== undefined && config.mealReminderOffsetMinutes !== null) {
+      const val = parseInt(config.mealReminderOffsetMinutes, 10);
+      if (isNaN(val) || val < 1 || val > 120) {
+        throw ApiError.badRequest('Meal reminder offset minutes must be between 1 and 120 minutes');
+      }
+    }
+    if (config.mealFollowupOffsetMinutes !== undefined && config.mealFollowupOffsetMinutes !== null) {
+      const val = parseInt(config.mealFollowupOffsetMinutes, 10);
+      if (isNaN(val) || val < 15 || val > 720) {
+        throw ApiError.badRequest('Meal follow-up offset minutes must be between 15 and 720 minutes');
+      }
+    }
+    
+    const hhMmRegex = /^([01]\d|2[0-3]):[0-5]\d$/;
+    
+    if (config.waterStartTime !== undefined && config.waterStartTime !== null) {
+      if (!hhMmRegex.test(config.waterStartTime)) {
+        throw ApiError.badRequest('Water start time must be in HH:mm format');
+      }
+    }
+    if (config.waterEndTime !== undefined && config.waterEndTime !== null) {
+      if (!hhMmRegex.test(config.waterEndTime)) {
+        throw ApiError.badRequest('Water end time must be in HH:mm format');
+      }
+    }
+    if (config.waterFrequencyHours !== undefined && config.waterFrequencyHours !== null) {
+      const val = parseInt(config.waterFrequencyHours, 10);
+      if (isNaN(val) || val < 1 || val > 12) {
+        throw ApiError.badRequest('Water frequency hours must be between 1 and 12 hours');
+      }
+    }
+    if (config.waterDailyTargetMl !== undefined && config.waterDailyTargetMl !== null) {
+      const val = parseInt(config.waterDailyTargetMl, 10);
+      if (isNaN(val) || val < 500 || val > 10000) {
+        throw ApiError.badRequest('Water daily target must be between 500 and 10000 mL');
+      }
+    }
+
+    if (config.sleepReminderTime !== undefined && config.sleepReminderTime !== null) {
+      if (!hhMmRegex.test(config.sleepReminderTime)) {
+        throw ApiError.badRequest('Sleep reminder time must be in HH:mm format');
+      }
+    }
+    if (config.sleepResponseWindowMinutes !== undefined && config.sleepResponseWindowMinutes !== null) {
+      const val = parseInt(config.sleepResponseWindowMinutes, 10);
+      if (isNaN(val) || val < 15 || val > 720) {
+        throw ApiError.badRequest('Sleep response window minutes must be between 15 and 720 minutes');
+      }
+    }
+
+    const updated = await prisma.tenant.update({
+      where: { id: tenantId },
+      data: { reminderConfig: config },
+      select: { reminderConfig: true },
+    });
+
+    res.status(HTTP_STATUS.OK).json({
+      success: true,
+      data: updated.reminderConfig,
+    });
+  },
+
+  async bulkArchiveJobs(req, res) {
+    const { tenantId } = req.user;
+    const { jobIds, clientId, statuses, jobType, startDate, endDate } = req.body;
+
+    const where = { tenantId, isArchived: false };
+    if (Array.isArray(jobIds) && jobIds.length > 0) {
+      where.id = { in: jobIds };
+    } else {
+      if (clientId) where.clientId = clientId;
+      if (jobType) where.jobType = jobType;
+      if (Array.isArray(statuses) && statuses.length > 0) {
+        where.status = { in: statuses };
+      }
+      if (startDate || endDate) {
+        where.scheduledFor = {};
+        if (startDate) where.scheduledFor.gte = new Date(startDate);
+        if (endDate) where.scheduledFor.lte = new Date(endDate);
+      }
+    }
+
+    // Find the target jobs first to get their queue IDs and statuses
+    const targetJobs = await prisma.reminderJob.findMany({
+      where,
+      select: { id: true, queueJobId: true, status: true },
+    });
+
+    if (targetJobs.length === 0) {
+      return res.status(HTTP_STATUS.OK).json({
+        success: true,
+        message: 'No jobs found matching criteria to archive',
+        count: 0,
+      });
+    }
+
+    const pendingTargetIds = targetJobs.filter(j => j.status === 'PENDING').map(j => j.id);
+    const nonPendingTargetIds = targetJobs.filter(j => j.status !== 'PENDING').map(j => j.id);
+
+    await prisma.$transaction(async (tx) => {
+      if (pendingTargetIds.length > 0) {
+        await tx.reminderJob.updateMany({
+          where: { id: { in: pendingTargetIds } },
+          data: { isArchived: true, status: 'CANCELLED', errorText: 'Archived by user' },
+        });
+      }
+      if (nonPendingTargetIds.length > 0) {
+        await tx.reminderJob.updateMany({
+          where: { id: { in: nonPendingTargetIds } },
+          data: { isArchived: true },
+        });
+      }
+    });
+
+    // Cancel BullMQ jobs
+    for (const job of targetJobs) {
+      if (job.status === 'PENDING' && job.queueJobId) {
+        try {
+          await reminderProducer.cancelJob(job.queueJobId);
+        } catch (err) {
+          logger.error(`[REMINDER_FAILURE] Failed to cancel BullMQ job ${job.queueJobId}: ${err.message}`);
+        }
+      }
+    }
+
+    // Remove from DLQ if exists
+    for (const job of targetJobs) {
+      try {
+        const dlqJob = await reminderDeadLetterQueue.getJob(job.id);
+        if (dlqJob) {
+          await dlqJob.remove();
+        }
+      } catch (err) {
+        // Ignore if not in DLQ
+      }
+    }
+
+    res.status(HTTP_STATUS.OK).json({
+      success: true,
+      message: `Successfully archived ${targetJobs.length} reminder jobs`,
+      count: targetJobs.length,
     });
   },
 };

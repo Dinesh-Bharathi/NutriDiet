@@ -192,6 +192,7 @@ model Tenant {
   state         String?
   country       String?
   postalCode    String?
+  reminderConfig      Json?
 
   // Timestamps
   createdAt DateTime  @default(now())
@@ -1868,6 +1869,7 @@ model ReminderJob {
   errorText         String?
   sentMetaMessageId String?           @db.VarChar(100)
   complianceEventId String?
+  isArchived        Boolean           @default(false)
   createdAt         DateTime          @default(now())
   updatedAt         DateTime          @updatedAt
 
@@ -1880,6 +1882,7 @@ model ReminderJob {
   complianceEvent ClientComplianceEvent?
 
   @@index([tenantId])
+  @@index([tenantId, isArchived])
   @@index([tenantId, clientId])
   @@index([status, scheduledFor])
   @@index([tenantId, status])
@@ -1887,17 +1890,19 @@ model ReminderJob {
 }
 
 model ReminderTemplate {
-  id        String               @id @default(cuid())
-  tenantId  String?
-  name      String
-  type      ReminderTemplateType
-  title     String
-  message   String               @db.Text
-  buttons   Json?
-  config    Json?
-  isDefault Boolean              @default(false)
-  isActive  Boolean              @default(true)
-  version   Int                  @default(1)
+  id              String               @id @default(cuid())
+  tenantId        String?
+  name            String
+  type            ReminderTemplateType
+  title           String
+  message         String               @db.Text
+  buttons         Json?
+  templateButtons Json?
+  buttonVersion   Int                  @default(1)
+  config          Json?
+  isDefault       Boolean              @default(false)
+  isActive        Boolean              @default(true)
+  version         Int                  @default(1)
   createdAt DateTime             @default(now())
   updatedAt DateTime             @updatedAt
 
@@ -2004,6 +2009,12 @@ model ComplianceDailySummary {
   noResponseCount          Int      @default(0)
   currentStreak            Int      @default(0)
   longestStreak            Int      @default(0)
+  mealsCompleted           Int      @default(0)
+  mealsTotal               Int      @default(0)
+  waterCompleted           Int      @default(0)
+  waterTotal               Int      @default(0)
+  sleepCompleted           Int      @default(0)
+  sleepTotal               Int      @default(0)
   createdAt                DateTime @default(now())
   updatedAt                DateTime @updatedAt
 

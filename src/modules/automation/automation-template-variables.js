@@ -9,6 +9,23 @@ export const ALLOWED_VARIABLES = [
   '{{diet_plan_name}}',
   '{{clinic_name}}',
   '{{dietitian_name}}',
+  '{{meal_items}}',
+  '{{meal_quantity}}',
+  '{{meal_units}}',
+  '{{meal_summary}}',
+];
+
+export const PLACEHOLDERS_REGISTRY = [
+  { key: "{{client_name}}", label: "Client Name", category: "Client", description: "First and last name", supportedTypes: ["MEAL_REMINDER", "MEAL_FOLLOWUP", "WATER_REMINDER", "SLEEP_REMINDER"] },
+  { key: "{{meal_name}}", label: "Meal Name", category: "Meal", description: "e.g., Breakfast", supportedTypes: ["MEAL_REMINDER", "MEAL_FOLLOWUP"] },
+  { key: "{{meal_time}}", label: "Meal Time", category: "Meal", description: "Scheduled hour (e.g. 08:30 AM)", supportedTypes: ["MEAL_REMINDER", "MEAL_FOLLOWUP"] },
+  { key: "{{meal_summary}}", label: "Meal Summary", category: "Meal", description: "List of items in the meal", supportedTypes: ["MEAL_REMINDER", "MEAL_FOLLOWUP"] },
+  { key: "{{meal_items}}", label: "Meal Items (Bullets)", category: "Meal", description: "Detailed bullet-point food items", supportedTypes: ["MEAL_REMINDER", "MEAL_FOLLOWUP"] },
+  { key: "{{meal_quantity}}", label: "Meal Quantities", category: "Meal", description: "Quantities of each item", supportedTypes: ["MEAL_REMINDER", "MEAL_FOLLOWUP"] },
+  { key: "{{meal_units}}", label: "Meal Units", category: "Meal", description: "Unit measurements of items", supportedTypes: ["MEAL_REMINDER", "MEAL_FOLLOWUP"] },
+  { key: "{{clinic_name}}", label: "Clinic Name", category: "Clinic", description: "Your workspace name", supportedTypes: ["MEAL_REMINDER", "MEAL_FOLLOWUP", "WATER_REMINDER", "SLEEP_REMINDER"] },
+  { key: "{{dietitian_name}}", label: "Dietitian Name", category: "Clinic", description: "Assigned dietitian name", supportedTypes: ["MEAL_REMINDER", "MEAL_FOLLOWUP", "WATER_REMINDER", "SLEEP_REMINDER"] },
+  { key: "{{diet_plan_name}}", label: "Diet Plan Name", category: "Automation", description: "Title of active diet plan", supportedTypes: ["MEAL_REMINDER", "MEAL_FOLLOWUP"] }
 ];
 
 /**
@@ -92,6 +109,17 @@ export class AutomationTemplateRegistry {
 // Instantiate default registry
 export const automationTemplateRegistry = new AutomationTemplateRegistry();
 
+function formatItem(it) {
+  const q = it.quantity || '';
+  const u = it.unit || '';
+  const name = it.foodName || '';
+  const isSuffix = ['g', 'ml', 'kcal', 'oz', 'mg'].includes(u.toLowerCase());
+  if (isSuffix) {
+    return `${q}${u} ${name}`.trim();
+  }
+  return `${q} ${u} ${name}`.replace(/\s+/g, ' ').trim();
+}
+
 // Register system default variables
 const defaultVariables = [
   {
@@ -126,6 +154,34 @@ const defaultVariables = [
         return `${dietitian.firstName} ${dietitian.lastName}`.trim();
       }
       return '';
+    },
+  },
+  {
+    key: '{{meal_items}}',
+    resolver: (ctx) => {
+      const items = ctx.meal?.items || [];
+      return items.map(formatItem).join('\n');
+    },
+  },
+  {
+    key: '{{meal_quantity}}',
+    resolver: (ctx) => {
+      const items = ctx.meal?.items || [];
+      return items.map(it => it.quantity || '').filter(Boolean).join(', ');
+    },
+  },
+  {
+    key: '{{meal_units}}',
+    resolver: (ctx) => {
+      const items = ctx.meal?.items || [];
+      return items.map(it => it.unit || '').filter(Boolean).join(', ');
+    },
+  },
+  {
+    key: '{{meal_summary}}',
+    resolver: (ctx) => {
+      const items = ctx.meal?.items || [];
+      return items.map(formatItem).join(', ');
     },
   },
 ];

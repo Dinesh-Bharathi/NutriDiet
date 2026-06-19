@@ -29,8 +29,8 @@ export const reminderGeneratorService = {
    * @param {string} automationId
    * @returns {Promise<number>} Number of jobs generated
    */
-  async generateJobs(tenantId, automationId) {
-    logger.info(`[REMINDER_GENERATOR] Starting job generation for automation: ${automationId}`, { tenantId, automationId });
+  async generateJobs(tenantId, automationId, options = { dryRun: false }) {
+    logger.info(`[REMINDER_GENERATOR] Starting job generation for automation: ${automationId} (Dry run: ${!!options?.dryRun})`, { tenantId, automationId });
 
     // Fetch client & tenant details
     const automation = await prisma.dietPlanAutomation.findUnique({
@@ -49,6 +49,21 @@ export const reminderGeneratorService = {
 
     const { client, tenant } = automation;
     const clientTimezone = client.timezone || 'UTC';
+
+    // Resolve tenant reminder configuration
+    const tenantConfig = tenant.reminderConfig || {};
+    const mealReminderOffset = tenantConfig.mealReminderOffsetMinutes !== undefined
+      ? parseInt(tenantConfig.mealReminderOffsetMinutes, 10)
+      : AUTOMATION_CONFIG.mealReminderOffsetMinutes;
+
+    const mealFollowupDelay = tenantConfig.mealFollowupOffsetMinutes !== undefined
+      ? parseInt(tenantConfig.mealFollowupOffsetMinutes, 10)
+      : AUTOMATION_CONFIG.mealFollowupOffsetMinutes;
+
+    const waterStartTime = tenantConfig.waterStartTime || '08:00';
+    const waterEndTime = tenantConfig.waterEndTime || '20:00';
+    const waterFrequencyHours = tenantConfig.waterFrequencyHours !== undefined ? parseInt(tenantConfig.waterFrequencyHours, 10) : 2;
+    const sleepTime = tenantConfig.sleepReminderTime || AUTOMATION_CONFIG.sleepReminderTime;
 
     // Fetch the diet plan details with cycles & meals (with food items included)
     const dietPlan = await prisma.dietPlan.findUnique({
@@ -105,24 +120,31 @@ export const reminderGeneratorService = {
         clientId: client.id,
         automationId: automation.id,
         status: 'PENDING',
+        isArchived: false,
       },
       select: { id: true, queueJobId: true },
     });
 
-    // Fetch active templates outside transaction
-    const activeTemplates = await prisma.reminderTemplate.findMany({
+    // Fetch all templates (active or inactive) for this tenant or default
+    const templates = await prisma.reminderTemplate.findMany({
       where: {
         OR: [
-          { tenantId, isActive: true },
-          { tenantId: null, isDefault: true, isActive: true },
+          { tenantId },
+          { tenantId: null, isDefault: true },
         ],
       },
     });
 
     const getTemplate = (type) => {
-      const custom = activeTemplates.find(t => t.type === type && t.tenantId === tenantId);
-      if (custom) return custom;
-      return activeTemplates.find(t => t.type === type && t.tenantId === null);
+      const custom = templates.find(t => t.type === type && t.tenantId === tenantId);
+      if (custom) {
+        return custom.isActive ? custom : null;
+      }
+      const system = templates.find(t => t.type === type && t.tenantId === null);
+      if (system) {
+        return system.isActive ? system : null;
+      }
+      return null;
     };
 
     const now = new Date();
@@ -142,10 +164,10 @@ export const reminderGeneratorService = {
       for (const meal of meals) {
         if (!meal.mealTime) continue;
 
-        // Meal Reminder (T-5)
+        // Meal Reminder
         const reminderTemplate = getTemplate('MEAL_REMINDER');
         if (reminderTemplate) {
-          const reminderTimeStr = offsetTime(meal.mealTime, -AUTOMATION_CONFIG.mealReminderOffsetMinutes);
+          const reminderTimeStr = offsetTime(meal.mealTime, -mealReminderOffset);
           const reminderUtc = zonedTimeToUtc(`${dateStr} ${reminderTimeStr}:00`, clientTimezone);
 
           // Only schedule if reminder is in the future
@@ -154,7 +176,7 @@ export const reminderGeneratorService = {
               client,
               tenant,
               dietPlan,
-              meal: { name: getMealDisplay(meal.name), mealTime: meal.mealTime },
+              meal: { name: getMealDisplay(meal.name), mealTime: meal.mealTime, items: meal.items || [] },
             };
 
             const compiledTitle = automationTemplateRegistry.compile(reminderTemplate.title, context);
@@ -210,10 +232,10 @@ export const reminderGeneratorService = {
           }
         }
 
-        // Meal Follow-Up (+60)
+        // Meal Follow-Up
         const followupTemplate = getTemplate('MEAL_FOLLOWUP');
         if (followupTemplate) {
-          const followupTimeStr = offsetTime(meal.mealTime, AUTOMATION_CONFIG.mealFollowupOffsetMinutes);
+          const followupTimeStr = offsetTime(meal.mealTime, mealFollowupDelay);
           const followupUtc = zonedTimeToUtc(`${dateStr} ${followupTimeStr}:00`, clientTimezone);
 
           // Only schedule if reminder is in the future
@@ -222,7 +244,7 @@ export const reminderGeneratorService = {
               client,
               tenant,
               dietPlan,
-              meal: { name: getMealDisplay(meal.name), mealTime: meal.mealTime },
+              meal: { name: getMealDisplay(meal.name), mealTime: meal.mealTime, items: meal.items || [] },
             };
 
             const compiledTitle = automationTemplateRegistry.compile(followupTemplate.title, context);
@@ -283,18 +305,20 @@ export const reminderGeneratorService = {
       if (automation.waterEnabled) {
         const waterTemplate = getTemplate('WATER_REMINDER');
         if (waterTemplate) {
-          const waterTimes = [];
-          if (automation.waterFrequencyType === 'CUSTOM') {
-            const customList = Array.isArray(automation.waterCustomTimes) 
-              ? automation.waterCustomTimes 
-              : [];
-            waterTimes.push(...customList);
-          } else {
-            // FREQUENCY-based: generate reminders from 08:00 to 20:00
-            const interval = automation.waterIntervalHours || 2;
-            for (let h = 8; h <= 20; h += interval) {
-              waterTimes.push(`${String(h).padStart(2, '0')}:00`);
+          let waterTimes = [];
+          if (automation.waterFrequencyType === 'CUSTOM' && automation.waterCustomTimes) {
+            if (Array.isArray(automation.waterCustomTimes)) {
+              // Legacy array fallback
+              waterTimes.push(...automation.waterCustomTimes);
+            } else if (typeof automation.waterCustomTimes === 'object') {
+              const customStart = automation.waterCustomTimes.startTime || '08:00';
+              const customEnd = automation.waterCustomTimes.endTime || '20:00';
+              const customFreq = parseInt(automation.waterCustomTimes.frequencyHours, 10) || 2;
+              waterTimes = generateIntervalTimes(customStart, customEnd, customFreq);
             }
+          } else {
+            // Use Clinic Defaults (FREQUENCY)
+            waterTimes = generateIntervalTimes(waterStartTime, waterEndTime, waterFrequencyHours);
           }
 
           for (const timeStr of waterTimes) {
@@ -339,7 +363,7 @@ export const reminderGeneratorService = {
       if (automation.sleepEnabled) {
         const sleepTemplate = getTemplate('SLEEP_REMINDER');
         if (sleepTemplate) {
-          const sleepTimeStr = automation.sleepTime || '22:00';
+          const sleepTimeStr = automation.sleepTime || sleepTime || '22:00';
           const sleepUtc = zonedTimeToUtc(`${dateStr} ${sleepTimeStr}:00`, clientTimezone);
 
           if (sleepUtc > now) {
@@ -375,6 +399,22 @@ export const reminderGeneratorService = {
           }
         }
       }
+    }
+
+    // If dry run, return the forecasted counts and do not touch database or queue
+    if (options && options.dryRun) {
+      const counts = {
+        MEAL_REMINDER: 0,
+        MEAL_FOLLOWUP: 0,
+        WATER_REMINDER: 0,
+        SLEEP_REMINDER: 0,
+      };
+      for (const job of jobsToCreate) {
+        if (counts[job.jobType] !== undefined) {
+          counts[job.jobType]++;
+        }
+      }
+      return counts;
     }
 
     // 2. Run database step in a transaction (only bulk delete and bulk createMany)
@@ -461,6 +501,23 @@ function offsetTime(timeStr, offsetMinutes) {
 
 function getMealDisplay(mealType) {
   return mealType.charAt(0).toUpperCase() + mealType.slice(1).toLowerCase().replace('_', ' ');
+}
+
+function generateIntervalTimes(startTime, endTime, frequencyHours) {
+  const times = [];
+  const startHour = parseInt(startTime.split(':')[0], 10) || 8;
+  const startMin = parseInt(startTime.split(':')[1], 10) || 0;
+  const endHour = parseInt(endTime.split(':')[0], 10) || 20;
+  const endMin = parseInt(endTime.split(':')[1], 10) || 0;
+  
+  let currHour = startHour;
+  let currMin = startMin;
+  
+  while (currHour < endHour || (currHour === endHour && currMin <= endMin)) {
+    times.push(`${String(currHour).padStart(2, '0')}:${String(currMin).padStart(2, '0')}`);
+    currHour += frequencyHours;
+  }
+  return times;
 }
 
 export default reminderGeneratorService;

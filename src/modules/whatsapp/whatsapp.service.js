@@ -55,9 +55,11 @@ export function generatePreviewText(type, body, messageData = {}) {
       return `Reaction`;
     case 'INTERACTIVE': {
       const interactive = messageData.interactive || {};
-      const optionTitle = interactive.button_reply?.title || interactive.list_reply?.title || 'Option';
+      const optionTitle = interactive.button_reply?.title || interactive.list_reply?.title || body || 'Option';
       return `🔘 ${optionTitle}`;
     }
+    case 'TEMPLATE':
+      return `📋 ${body || 'Template message'}`;
     case 'SYSTEM':
       return body || 'System event';
     default:

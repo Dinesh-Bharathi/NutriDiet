@@ -17,18 +17,27 @@ router.use(requireMinRole(ROLES.ASSISTANT));
 
 // ── Templates ───────────────────────────────────────────────────────────────
 router.get('/templates', asyncHandler(automationController.getTemplates));
+router.get('/templates/placeholders', asyncHandler(automationController.getPlaceholders));
 router.post('/templates', asyncHandler(automationController.createTemplate));
 router.put('/templates/:id', asyncHandler(automationController.updateTemplate));
 router.delete('/templates/:id', asyncHandler(automationController.deleteTemplate));
 router.post('/templates/:id/clone', asyncHandler(automationController.cloneTemplate));
 router.post('/templates/restore', asyncHandler(automationController.restoreDefault));
+router.get('/templates/:id/disable-impact', asyncHandler(automationController.getDisableImpact));
+router.put('/templates/:id/toggle', asyncHandler(automationController.toggleTemplateActive));
+
+// ── Configurations (Admin only) ─────────────────────────────────────────────
+router.get('/config', requireMinRole(ROLES.ADMIN), asyncHandler(automationController.getReminderConfig));
+router.put('/config', requireMinRole(ROLES.ADMIN), asyncHandler(automationController.updateReminderConfig));
 
 // ── Jobs ────────────────────────────────────────────────────────────────────
 router.get('/jobs', asyncHandler(automationController.getJobs));
+router.post('/jobs/bulk-archive', asyncHandler(automationController.bulkArchiveJobs));
 router.get('/jobs/:id', asyncHandler(automationController.getJobById));
 
 // ── Automations ─────────────────────────────────────────────────────────────
 router.post('/automations/:id/generate', asyncHandler(automationController.regenerateJobs));
+router.get('/automations/:id/generate-preview', asyncHandler(automationController.generatePreview));
 router.put('/automations/:id/settings', asyncHandler(automationController.updateAutomationSettings));
 
 export default router;

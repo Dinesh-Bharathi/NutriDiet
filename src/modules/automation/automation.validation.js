@@ -25,7 +25,7 @@ export const automationValidation = {
       waterEnabled: z.boolean().optional(),
       waterFrequencyType: z.enum(['FREQUENCY', 'CUSTOM']).optional(),
       waterIntervalHours: z.number().int().positive().nullable().optional(),
-      waterCustomTimes: z.array(z.string()).nullable().optional(),
+      waterCustomTimes: z.any().nullable().optional(),
       sleepEnabled: z.boolean().optional(),
       sleepTime: z.string().nullable().optional(),
     }),
