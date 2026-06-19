@@ -135,6 +135,28 @@ enum RiskFlagStatus {
   DISMISSED
 }
 
+enum AutomationStatus {
+  ACTIVE
+  PAUSED
+  COMPLETED
+  CANCELLED
+}
+
+enum ReminderJobType {
+  MEAL_REMINDER
+  MEAL_FOLLOWUP
+  WATER_REMINDER
+  SLEEP_REMINDER
+}
+
+enum ReminderJobStatus {
+  PENDING
+  PROCESSING
+  SENT
+  FAILED
+  CANCELLED
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // TENANT
 // Top-level multi-tenancy entity. Every business (clinic, coach, dietitian)
@@ -207,6 +229,8 @@ model Tenant {
   whatsAppConversations       WhatsAppConversation[]
   whatsAppMessages            WhatsAppMessage[]
   notifications               Notification[]
+  dietPlanAutomations         DietPlanAutomation[]
+  reminderJobs                ReminderJob[]
 
   @@index([slug])
   @@index([status])
@@ -290,6 +314,15 @@ model Client {
   // Health context (non-PHI; PHI goes in a separate encrypted table in Phase 2)
   notes String?
 
+  addressLine1     String?
+  addressLine2     String?
+  city             String?
+  state            String?
+  country          String?          // ISO alpha-2 e.g. "IN"
+  timezone         String?
+  locale           String?
+  remindersEnabled Boolean          @default(true)
+
   status           ClientStatus     @default(ACTIVE)
   onboardingStatus OnboardingStatus @default(PENDING)
 
@@ -320,6 +353,8 @@ model Client {
   assessmentSnapshots       AssessmentSnapshot[]
   vaultDocuments            VaultDocument[]
   whatsAppConversations     WhatsAppConversation[]
+  dietPlanAutomations       DietPlanAutomation[]
+  reminderJobs              ReminderJob[]
 
   @@index([tenantId])
   @@index([tenantId, dietitianId])
@@ -916,6 +951,8 @@ model DietPlan {
   meals       DietPlanMeal[]
   checkIns    ClientCheckIn[]
   cycles      DietPlanCycle[]
+  automations DietPlanAutomation[]
+  reminderJobs ReminderJob[]
 
   @@index([tenantId])
   @@index([clientId])
@@ -1762,6 +1799,61 @@ model NotificationPreference {
 
   @@index([userId])
   @@map("notification_preferences")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DIET PLAN AUTOMATION & REMINDER INFRASTRUCTURE
+// ─────────────────────────────────────────────────────────────────────────────
+
+model DietPlanAutomation {
+  id          String           @id @default(cuid())
+  tenantId    String
+  clientId    String
+  dietPlanId  String
+  status      AutomationStatus @default(ACTIVE)
+  activatedAt DateTime?
+  activatedBy String?
+  startDate   DateTime?
+  stoppedAt   DateTime?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id])
+  client   Client   @relation(fields: [clientId], references: [id])
+  dietPlan DietPlan @relation(fields: [dietPlanId], references: [id])
+
+  @@index([tenantId])
+  @@index([tenantId, clientId])
+  @@index([tenantId, clientId, status])
+  @@index([tenantId, status])
+  @@map("diet_plan_automations")
+}
+
+model ReminderJob {
+  id           String            @id @default(cuid())
+  tenantId     String
+  clientId     String
+  dietPlanId   String
+  jobType      ReminderJobType
+  scheduledFor DateTime
+  timezone     String
+  status       ReminderJobStatus @default(PENDING)
+  templateKey  String?
+  mealType     String?
+  executedAt   DateTime?
+  errorText    String?
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id])
+  client   Client   @relation(fields: [clientId], references: [id])
+  dietPlan DietPlan @relation(fields: [dietPlanId], references: [id])
+
+  @@index([tenantId])
+  @@index([tenantId, clientId])
+  @@index([status, scheduledFor])
+  @@index([tenantId, status])
+  @@map("reminder_jobs")
 }
 
 

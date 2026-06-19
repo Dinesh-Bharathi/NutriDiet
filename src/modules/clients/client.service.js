@@ -47,6 +47,21 @@ export const clientService = {
       await this.validateDietitian(tenantId, clientData.dietitianId);
     }
 
+    const tenant = await prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: {
+        timezone: true,
+        locale: true,
+        countryCode: true,
+      },
+    });
+
+    if (tenant) {
+      clientData.timezone = clientData.timezone || tenant.timezone || null;
+      clientData.locale = clientData.locale || tenant.locale || null;
+      clientData.country = clientData.country || tenant.countryCode || null;
+    }
+
     return clientRepository.create(tenantId, clientData);
   },
 

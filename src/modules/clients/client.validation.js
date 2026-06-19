@@ -3,10 +3,27 @@
 import { z } from 'zod';
 import { GENDER, PAGINATION } from '../../config/constants.js';
 import { CLIENT_STATUS, ONBOARDING_STATUS } from './client.constants.js';
+import { parsePhoneNumberFromString } from 'libphonenumber-js';
 
 const genderEnum = z.nativeEnum(GENDER);
 const statusEnum = z.nativeEnum(CLIENT_STATUS);
 const onboardingStatusEnum = z.nativeEnum(ONBOARDING_STATUS);
+
+// Common phone validation
+const phoneSchema = z
+  .string()
+  .nullable()
+  .optional()
+  .refine(
+    (val) => {
+      if (!val) return true;
+      const parsed = parsePhoneNumberFromString(val);
+      return parsed && parsed.isValid();
+    },
+    {
+      message: 'Invalid international phone number format (E.164 required)',
+    }
+  );
 
 // Schema for client creation
 export const createClientSchema = z.object({
@@ -25,17 +42,35 @@ export const createClientSchema = z.object({
       .toLowerCase()
       .nullable()
       .optional(),
-    phone: z.string().nullable().optional(),
+    phone: phoneSchema,
     gender: genderEnum.nullable().optional(),
     dateOfBirth: z
       .preprocess((val) => (val ? new Date(val) : null), z.date())
       .nullable()
       .optional(),
-
     notes: z.string().nullable().optional(),
     dietitianId: z.string().nullable().optional(),
     status: statusEnum.optional().default(CLIENT_STATUS.ACTIVE),
     onboardingStatus: onboardingStatusEnum.optional().default(ONBOARDING_STATUS.PENDING),
+
+    // Localization / Address / Automation Foundation
+    addressLine1: z.string().max(200).nullable().optional(),
+    addressLine2: z.string().max(200).nullable().optional(),
+    city: z.string().max(100).nullable().optional(),
+    state: z.string().max(100).nullable().optional(),
+    country: z
+      .string()
+      .length(2, 'Country must be a 2-character ISO code')
+      .toUpperCase()
+      .nullable()
+      .optional(),
+    timezone: z.string().nullable().optional(),
+    locale: z
+      .string()
+      .regex(/^[a-z]{2}(-[A-Z|a-z]{2,4})?$/, 'Invalid locale format (e.g., en-US)')
+      .nullable()
+      .optional(),
+    remindersEnabled: z.boolean().optional().default(true),
   }),
 });
 
@@ -53,17 +88,35 @@ export const updateClientSchema = z.object({
       .toLowerCase()
       .nullable()
       .optional(),
-    phone: z.string().nullable().optional(),
+    phone: phoneSchema,
     gender: genderEnum.nullable().optional(),
     dateOfBirth: z
       .preprocess((val) => (val ? new Date(val) : null), z.date())
       .nullable()
       .optional(),
-
     notes: z.string().nullable().optional(),
     dietitianId: z.string().nullable().optional(),
     status: statusEnum.optional(),
     onboardingStatus: onboardingStatusEnum.optional(),
+
+    // Localization / Address / Automation Foundation
+    addressLine1: z.string().max(200).nullable().optional(),
+    addressLine2: z.string().max(200).nullable().optional(),
+    city: z.string().max(100).nullable().optional(),
+    state: z.string().max(100).nullable().optional(),
+    country: z
+      .string()
+      .length(2, 'Country must be a 2-character ISO code')
+      .toUpperCase()
+      .nullable()
+      .optional(),
+    timezone: z.string().nullable().optional(),
+    locale: z
+      .string()
+      .regex(/^[a-z]{2}(-[A-Z|a-z]{2,4})?$/, 'Invalid locale format (e.g., en-US)')
+      .nullable()
+      .optional(),
+    remindersEnabled: z.boolean().optional(),
   }),
 });
 

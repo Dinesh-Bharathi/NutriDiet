@@ -6,6 +6,7 @@ import { assessmentRepository } from '../assessments/assessment.repository.js';
 import ApiError from '../../utils/ApiError.js';
 import prisma from '../../lib/prisma.js';
 import { clinicalProfileService } from '../assessments/clinical-profile.service.js';
+import { automationService } from '../automation/automation.service.js';
 
 // Helper to check if a plan is archived
 function checkNotArchived(dietPlan) {
@@ -69,7 +70,16 @@ export const dietPlanService = {
       await checkActivePlanCollision(tenantId, clientId, null, data.startDate, data.endDate);
     }
 
-    return dietPlanRepository.create(tenantId, clientId, creatorId, data);
+    const createdPlan = await dietPlanRepository.create(tenantId, clientId, creatorId, data);
+    if (createdPlan.status === 'ACTIVE') {
+      await automationService.createAutomation(tenantId, {
+        clientId: createdPlan.clientId,
+        dietPlanId: createdPlan.id,
+        activatedBy: creatorId,
+        startDate: createdPlan.startDate || null,
+      });
+    }
+    return createdPlan;
   },
 
   async getDietPlanById(tenantId, id) {
@@ -139,7 +149,16 @@ export const dietPlanService = {
       await checkActivePlanCollision(tenantId, existing.clientId, id, finalStart, finalEnd);
     }
 
-    return dietPlanRepository.update(tenantId, id, updateData);
+    const updatedPlan = await dietPlanRepository.update(tenantId, id, updateData);
+    if (existing.status !== 'ACTIVE' && updatedPlan.status === 'ACTIVE') {
+      await automationService.createAutomation(tenantId, {
+        clientId: updatedPlan.clientId,
+        dietPlanId: updatedPlan.id,
+        activatedBy: null,
+        startDate: updatedPlan.startDate || null,
+      });
+    }
+    return updatedPlan;
   },
 
   async deleteDietPlan(tenantId, id) {
