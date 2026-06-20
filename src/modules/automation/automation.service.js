@@ -7,6 +7,15 @@ import { reminderGeneratorService } from './reminder-generator.service.js';
 import { reminderProducer } from './reminder-producer.js';
 import { set as redisSet, del as redisDel } from '../../lib/redis.js';
 
+async function verifyWhatsAppConnection(tenantId) {
+  const connection = await prisma.whatsAppConnection.findUnique({
+    where: { tenantId },
+  });
+  if (!connection || connection.status !== 'CONNECTED') {
+    throw ApiError.badRequest('Cannot schedule reminders. Tenant does not have a connected WhatsApp integration.');
+  }
+}
+
 export const automationService = {
   /**
    * Creates a new active automation for a client and generates scheduled reminders.
@@ -17,6 +26,7 @@ export const automationService = {
    * @returns {Promise<object>} Created automation record
    */
   async createAutomation(tenantId, { clientId, dietPlanId, activatedBy, startDate }) {
+    await verifyWhatsAppConnection(tenantId);
     logger.info(`[AUTOMATION] Creating new active automation session for client ${clientId} on tenant ${tenantId}`);
 
     // Fetch existing active automations and their pending jobs outside transaction
@@ -155,6 +165,7 @@ export const automationService = {
    * @returns {Promise<object>} Updated automation record
    */
   async resumeAutomation(tenantId, id) {
+    await verifyWhatsAppConnection(tenantId);
     const automation = await prisma.dietPlanAutomation.findFirst({
       where: { id, tenantId },
     });
@@ -315,6 +326,7 @@ export const automationService = {
    * @param {string} dietPlanId
    */
   async regenerateForPlan(tenantId, dietPlanId) {
+    await verifyWhatsAppConnection(tenantId);
     const automation = await prisma.dietPlanAutomation.findFirst({
       where: {
         tenantId,
@@ -419,6 +431,7 @@ export const automationService = {
 
       // 2. Only regenerate if the status is ACTIVE
       if (updatedAutomation.status === 'ACTIVE') {
+        await verifyWhatsAppConnection(tenantId);
         // Fetch pending jobs scheduled in the future
         const futurePendingJobs = await prisma.reminderJob.findMany({
           where: {
