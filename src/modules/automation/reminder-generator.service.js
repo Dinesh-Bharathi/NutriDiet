@@ -359,6 +359,51 @@ export const reminderGeneratorService = {
         }
       }
 
+      // Water Follow-up (Calculated according to client.timezone authority)
+      if (automation.waterEnabled) {
+        const waterFollowupTemplate = getTemplate('WATER_FOLLOWUP');
+        if (waterFollowupTemplate) {
+          const sleepTimeStr = automation.sleepTime || sleepTime || '22:00';
+          const waterFollowupOffset = tenantConfig.waterFollowupOffsetMinutes !== undefined
+            ? parseInt(tenantConfig.waterFollowupOffsetMinutes, 10)
+            : 10;
+          const waterFollowupTimeStr = offsetTime(sleepTimeStr, -waterFollowupOffset);
+          const waterFollowupUtc = zonedTimeToUtc(`${dateStr} ${waterFollowupTimeStr}:00`, clientTimezone);
+
+          if (waterFollowupUtc > now) {
+            const context = { client, tenant, dietPlan };
+            const compiledTitle = automationTemplateRegistry.compile(waterFollowupTemplate.title, context);
+            const compiledMessage = automationTemplateRegistry.compile(waterFollowupTemplate.message, context);
+
+            const jobId = generateCuid();
+            jobsToCreate.push({
+              id: jobId,
+              tenantId,
+              clientId: client.id,
+              automationId: automation.id,
+              dietPlanId: dietPlan.id,
+              jobType: 'WATER_FOLLOWUP',
+              scheduledFor: waterFollowupUtc,
+              timezone: clientTimezone,
+              status: 'PENDING',
+              templateId: waterFollowupTemplate.id,
+              templateVersion: waterFollowupTemplate.version,
+              automationVersion: automation.version,
+              compiledTitle,
+              compiledMessage,
+              queueJobId: jobId,
+              payload: {
+                jobType: 'WATER_FOLLOWUP',
+                clientId: client.id,
+                automationId: automation.id,
+                dietPlanId: dietPlan.id,
+                timezone: clientTimezone,
+              },
+            });
+          }
+        }
+      }
+
       // Sleep Reminders (Calculated according to client.timezone authority)
       if (automation.sleepEnabled) {
         const sleepTemplate = getTemplate('SLEEP_REMINDER');
@@ -399,6 +444,50 @@ export const reminderGeneratorService = {
           }
         }
       }
+
+      // Sleep Follow-up (Calculated according to client.timezone authority)
+      const sleepFollowupEnabled = tenantConfig.sleepFollowupEnabled !== false;
+      if (automation.sleepEnabled && sleepFollowupEnabled) {
+        const sleepFollowupTemplate = getTemplate('SLEEP_FOLLOWUP');
+        if (sleepFollowupTemplate) {
+          const sleepFollowupTimeStr = tenantConfig.sleepFollowupTime || '07:00';
+          const nextLocalDate = addDays(currentLocalDate, 1);
+          const nextDateStr = format(nextLocalDate, 'yyyy-MM-dd');
+          const sleepFollowupUtc = zonedTimeToUtc(`${nextDateStr} ${sleepFollowupTimeStr}:00`, clientTimezone);
+
+          if (sleepFollowupUtc > now) {
+            const context = { client, tenant, dietPlan };
+            const compiledTitle = automationTemplateRegistry.compile(sleepFollowupTemplate.title, context);
+            const compiledMessage = automationTemplateRegistry.compile(sleepFollowupTemplate.message, context);
+
+            const jobId = generateCuid();
+            jobsToCreate.push({
+              id: jobId,
+              tenantId,
+              clientId: client.id,
+              automationId: automation.id,
+              dietPlanId: dietPlan.id,
+              jobType: 'SLEEP_FOLLOWUP',
+              scheduledFor: sleepFollowupUtc,
+              timezone: clientTimezone,
+              status: 'PENDING',
+              templateId: sleepFollowupTemplate.id,
+              templateVersion: sleepFollowupTemplate.version,
+              automationVersion: automation.version,
+              compiledTitle,
+              compiledMessage,
+              queueJobId: jobId,
+              payload: {
+                jobType: 'SLEEP_FOLLOWUP',
+                clientId: client.id,
+                automationId: automation.id,
+                dietPlanId: dietPlan.id,
+                timezone: clientTimezone,
+              },
+            });
+          }
+        }
+      }
     }
 
     // If dry run, return the forecasted counts and do not touch database or queue
@@ -407,7 +496,9 @@ export const reminderGeneratorService = {
         MEAL_REMINDER: 0,
         MEAL_FOLLOWUP: 0,
         WATER_REMINDER: 0,
+        WATER_FOLLOWUP: 0,
         SLEEP_REMINDER: 0,
+        SLEEP_FOLLOWUP: 0,
       };
       for (const job of jobsToCreate) {
         if (counts[job.jobType] !== undefined) {

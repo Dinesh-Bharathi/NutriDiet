@@ -13,19 +13,21 @@ export const ALLOWED_VARIABLES = [
   '{{meal_quantity}}',
   '{{meal_units}}',
   '{{meal_summary}}',
+  '{{water_target_ml}}',
 ];
 
 export const PLACEHOLDERS_REGISTRY = [
-  { key: "{{client_name}}", label: "Client Name", category: "Client", description: "First and last name", supportedTypes: ["MEAL_REMINDER", "MEAL_FOLLOWUP", "WATER_REMINDER", "SLEEP_REMINDER"] },
+  { key: "{{client_name}}", label: "Client Name", category: "Client", description: "First and last name", supportedTypes: ["MEAL_REMINDER", "MEAL_FOLLOWUP", "WATER_REMINDER", "WATER_FOLLOWUP", "SLEEP_REMINDER", "SLEEP_FOLLOWUP"] },
   { key: "{{meal_name}}", label: "Meal Name", category: "Meal", description: "e.g., Breakfast", supportedTypes: ["MEAL_REMINDER", "MEAL_FOLLOWUP"] },
   { key: "{{meal_time}}", label: "Meal Time", category: "Meal", description: "Scheduled hour (e.g. 08:30 AM)", supportedTypes: ["MEAL_REMINDER", "MEAL_FOLLOWUP"] },
   { key: "{{meal_summary}}", label: "Meal Summary", category: "Meal", description: "List of items in the meal", supportedTypes: ["MEAL_REMINDER", "MEAL_FOLLOWUP"] },
   { key: "{{meal_items}}", label: "Meal Items (Bullets)", category: "Meal", description: "Detailed bullet-point food items", supportedTypes: ["MEAL_REMINDER", "MEAL_FOLLOWUP"] },
   { key: "{{meal_quantity}}", label: "Meal Quantities", category: "Meal", description: "Quantities of each item", supportedTypes: ["MEAL_REMINDER", "MEAL_FOLLOWUP"] },
   { key: "{{meal_units}}", label: "Meal Units", category: "Meal", description: "Unit measurements of items", supportedTypes: ["MEAL_REMINDER", "MEAL_FOLLOWUP"] },
-  { key: "{{clinic_name}}", label: "Clinic Name", category: "Clinic", description: "Your workspace name", supportedTypes: ["MEAL_REMINDER", "MEAL_FOLLOWUP", "WATER_REMINDER", "SLEEP_REMINDER"] },
-  { key: "{{dietitian_name}}", label: "Dietitian Name", category: "Clinic", description: "Assigned dietitian name", supportedTypes: ["MEAL_REMINDER", "MEAL_FOLLOWUP", "WATER_REMINDER", "SLEEP_REMINDER"] },
-  { key: "{{diet_plan_name}}", label: "Diet Plan Name", category: "Automation", description: "Title of active diet plan", supportedTypes: ["MEAL_REMINDER", "MEAL_FOLLOWUP"] }
+  { key: "{{clinic_name}}", label: "Clinic Name", category: "Clinic", description: "Your workspace name", supportedTypes: ["MEAL_REMINDER", "MEAL_FOLLOWUP", "WATER_REMINDER", "WATER_FOLLOWUP", "SLEEP_REMINDER", "SLEEP_FOLLOWUP"] },
+  { key: "{{dietitian_name}}", label: "Dietitian Name", category: "Clinic", description: "Assigned dietitian name", supportedTypes: ["MEAL_REMINDER", "MEAL_FOLLOWUP", "WATER_REMINDER", "WATER_FOLLOWUP", "SLEEP_REMINDER", "SLEEP_FOLLOWUP"] },
+  { key: "{{diet_plan_name}}", label: "Diet Plan Name", category: "Automation", description: "Title of active diet plan", supportedTypes: ["MEAL_REMINDER", "MEAL_FOLLOWUP"] },
+  { key: "{{water_target_ml}}", label: "Water Daily Target", category: "Water", description: "Daily water target in mL", supportedTypes: ["WATER_REMINDER", "WATER_FOLLOWUP"] }
 ];
 
 /**
@@ -182,6 +184,14 @@ const defaultVariables = [
     resolver: (ctx) => {
       const items = ctx.meal?.items || [];
       return items.map(formatItem).join(', ');
+    },
+  },
+  {
+    key: '{{water_target_ml}}',
+    resolver: (ctx) => {
+      const tenantConfig = ctx.tenant?.reminderConfig || {};
+      const target = tenantConfig.waterDailyTargetMl !== undefined ? tenantConfig.waterDailyTargetMl : 2000;
+      return String(target);
     },
   },
 ];

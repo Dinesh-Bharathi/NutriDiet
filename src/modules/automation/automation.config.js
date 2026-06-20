@@ -12,7 +12,9 @@ export const AUTOMATION_CONFIG = {
     MEAL_REMINDER: 2 * 60 * 60,      // 2 hours
     MEAL_FOLLOWUP: 4 * 60 * 60,      // 4 hours
     WATER_REMINDER: 24 * 60 * 60,    // 24 hours
+    WATER_FOLLOWUP: 24 * 60 * 60,    // 24 hours
     SLEEP_REMINDER: 24 * 60 * 60,    // 24 hours
+    SLEEP_FOLLOWUP: 24 * 60 * 60,    // 24 hours
   },
 
   // Scoring weights for compliance calculations

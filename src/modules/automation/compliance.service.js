@@ -35,7 +35,7 @@ export const complianceService = {
     const reminderConfig = tenant?.reminderConfig || {};
 
     let windowSeconds = AUTOMATION_CONFIG.RESPONSE_WINDOWS[reminderJob.jobType] || 4 * 60 * 60;
-    if (reminderJob.jobType === 'SLEEP_REMINDER') {
+    if (reminderJob.jobType === 'SLEEP_FOLLOWUP' || reminderJob.jobType === 'SLEEP_REMINDER') {
       const customSleepMinutes = reminderConfig.sleepResponseWindowMinutes;
       if (customSleepMinutes !== undefined && customSleepMinutes !== null) {
         windowSeconds = parseInt(customSleepMinutes, 10) * 60;
@@ -239,7 +239,7 @@ export const complianceService = {
 
     // 2. Calculate Water Compliance
     const waterEvents = events.filter(
-      (e) => e.reminderJob.jobType === 'WATER_REMINDER'
+      (e) => e.reminderJob.jobType === 'WATER_REMINDER' || e.reminderJob.jobType === 'WATER_FOLLOWUP'
     );
 
     let waterCompliancePercent = 0;
@@ -262,7 +262,7 @@ export const complianceService = {
 
     // 3. Calculate Sleep Compliance
     const sleepEvents = events.filter(
-      (e) => e.reminderJob.jobType === 'SLEEP_REMINDER'
+      (e) => e.reminderJob.jobType === 'SLEEP_REMINDER' || e.reminderJob.jobType === 'SLEEP_FOLLOWUP'
     );
 
     let sleepCompliancePercent = 0;
@@ -624,13 +624,13 @@ export const complianceService = {
         if (e.reminderJob.jobType === 'MEAL_REMINDER' || e.reminderJob.jobType === 'MEAL_FOLLOWUP') {
           if (e.responseType === 'MEAL_COMPLETED') complianceScore = 1.0;
           else if (e.responseType === 'MEAL_PARTIAL') complianceScore = 0.5;
-        } else if (e.reminderJob.jobType === 'WATER_REMINDER') {
+        } else if (e.reminderJob.jobType === 'WATER_REMINDER' || e.reminderJob.jobType === 'WATER_FOLLOWUP') {
           if (e.responseType === 'WATER_INTAKE') {
             const valObj = e.responseValue || {};
             const range = valObj.waterRange || '1-2L';
             complianceScore = (AUTOMATION_CONFIG.SCORING_WEIGHTS.WATER[range] ?? 100) / 100;
           }
-        } else if (e.reminderJob.jobType === 'SLEEP_REMINDER') {
+        } else if (e.reminderJob.jobType === 'SLEEP_REMINDER' || e.reminderJob.jobType === 'SLEEP_FOLLOWUP') {
           if (e.responseType === 'SLEEP_HOURS') {
             const valObj = e.responseValue || {};
             const range = valObj.sleepRange || '7-8H';

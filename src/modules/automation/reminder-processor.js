@@ -199,34 +199,44 @@ export const reminderProcessor = {
         });
       }
 
-      // 7. Get or Create Compliance Event
-      let complianceEvent = await prisma.clientComplianceEvent.findUnique({
-        where: { reminderJobId: job.id },
-      });
+      // 7. Get or Create Compliance Event (Only for follow-ups/compliance jobs)
+      const requiresCompliance = [
+        'MEAL_FOLLOWUP',
+        'WATER_FOLLOWUP',
+        'SLEEP_FOLLOWUP'
+      ].includes(job.jobType);
 
-      if (complianceEvent) {
-        logger.info(`[AUTOMATION] Compliance event already exists for job ${job.id} (eventId: ${complianceEvent.id}). Skipping creation.`, logMeta);
-      } else {
-        // Fetch latest job details to ensure we pass updated SENT status and sentMetaMessageId
-        const currentJob = await prisma.reminderJob.findUnique({ where: { id: job.id } });
-        complianceEvent = await complianceService.createComplianceEvent(prisma, currentJob);
-      }
+      let complianceEvent = null;
 
-      // 8. Queue Compliance Timeout BullMQ delayed job
-      const delayMs = complianceEvent.responseWindowClosesAt.getTime() - Date.now();
-      await complianceTimeoutQueue.add(
-        'compliance-timeout',
-        { complianceEventId: complianceEvent.id },
-        {
-          delay: Math.max(0, delayMs),
-          jobId: `timeout-${complianceEvent.id}`,
-          attempts: 3,
-          backoff: {
-            type: 'exponential',
-            delay: 5000,
-          },
+      if (requiresCompliance) {
+        complianceEvent = await prisma.clientComplianceEvent.findUnique({
+          where: { reminderJobId: job.id },
+        });
+
+        if (complianceEvent) {
+          logger.info(`[AUTOMATION] Compliance event already exists for job ${job.id} (eventId: ${complianceEvent.id}). Skipping creation.`, logMeta);
+        } else {
+          // Fetch latest job details to ensure we pass updated SENT status and sentMetaMessageId
+          const currentJob = await prisma.reminderJob.findUnique({ where: { id: job.id } });
+          complianceEvent = await complianceService.createComplianceEvent(prisma, currentJob);
         }
-      );
+
+        // 8. Queue Compliance Timeout BullMQ delayed job
+        const delayMs = complianceEvent.responseWindowClosesAt.getTime() - Date.now();
+        await complianceTimeoutQueue.add(
+          'compliance-timeout',
+          { complianceEventId: complianceEvent.id },
+          {
+            delay: Math.max(0, delayMs),
+            jobId: `timeout-${complianceEvent.id}`,
+            attempts: 3,
+            backoff: {
+              type: 'exponential',
+              delay: 5000,
+            },
+          }
+        );
+      }
 
       // Final status sync to ensure job remains SENT in database
       await prisma.reminderJob.update({
@@ -237,7 +247,11 @@ export const reminderProcessor = {
         },
       });
 
-      logger.info(`[AUTOMATION] Successfully processed reminder, created/retrieved event ${complianceEvent.id}, and scheduled timeout job.`, logMeta);
+      if (requiresCompliance && complianceEvent) {
+        logger.info(`[AUTOMATION] Successfully processed reminder, created/retrieved event ${complianceEvent.id}, and scheduled timeout job.`, logMeta);
+      } else {
+        logger.info(`[AUTOMATION] Successfully processed behavioral reminder job ${job.id}.`, logMeta);
+      }
 
     } catch (err) {
       logger.error(`[REMINDER_FAILURE] Failed to process job ${job.id}: ${err.message}`, {

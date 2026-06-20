@@ -1607,7 +1607,9 @@ enum ReminderJobType {
   MEAL_REMINDER
   MEAL_FOLLOWUP
   WATER_REMINDER
+  WATER_FOLLOWUP
   SLEEP_REMINDER
+  SLEEP_FOLLOWUP
 }
 
 enum ReminderJobStatus {
@@ -1774,7 +1776,9 @@ enum ReminderTemplateType {
   MEAL_REMINDER
   MEAL_FOLLOWUP
   WATER_REMINDER
+  WATER_FOLLOWUP
   SLEEP_REMINDER
+  SLEEP_FOLLOWUP
 }
 
 enum ComplianceResponseType {

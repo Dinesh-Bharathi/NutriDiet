@@ -719,14 +719,12 @@ export const whatsappWebhookService = {
                   }
                 } else {
                   const isMealJob = complianceEvent.mealName !== null;
-                  const isWaterJob = complianceEvent.reminderJobId && (await prisma.reminderJob.findUnique({
+                  const associatedJob = complianceEvent.reminderJobId ? await prisma.reminderJob.findUnique({
                     where: { id: complianceEvent.reminderJobId },
                     select: { jobType: true },
-                  }))?.jobType === 'WATER_REMINDER';
-                  const isSleepJob = complianceEvent.reminderJobId && (await prisma.reminderJob.findUnique({
-                    where: { id: complianceEvent.reminderJobId },
-                    select: { jobType: true },
-                  }))?.jobType === 'SLEEP_REMINDER';
+                  }) : null;
+                  const isWaterJob = associatedJob?.jobType === 'WATER_REMINDER' || associatedJob?.jobType === 'WATER_FOLLOWUP';
+                  const isSleepJob = associatedJob?.jobType === 'SLEEP_REMINDER' || associatedJob?.jobType === 'SLEEP_FOLLOWUP';
 
                   if (isMealJob) {
                     if (/(done|yes|ate|completed|ok|👍)/.test(rawBody)) {

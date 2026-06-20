@@ -486,6 +486,12 @@ export const automationController = {
         throw ApiError.badRequest('Water daily target must be between 500 and 10000 mL');
       }
     }
+    if (config.waterFollowupOffsetMinutes !== undefined && config.waterFollowupOffsetMinutes !== null) {
+      const val = parseInt(config.waterFollowupOffsetMinutes, 10);
+      if (isNaN(val) || val < 1 || val > 120) {
+        throw ApiError.badRequest('Water follow-up offset minutes must be between 1 and 120 minutes');
+      }
+    }
 
     if (config.sleepReminderTime !== undefined && config.sleepReminderTime !== null) {
       if (!hhMmRegex.test(config.sleepReminderTime)) {
@@ -496,6 +502,16 @@ export const automationController = {
       const val = parseInt(config.sleepResponseWindowMinutes, 10);
       if (isNaN(val) || val < 15 || val > 720) {
         throw ApiError.badRequest('Sleep response window minutes must be between 15 and 720 minutes');
+      }
+    }
+    if (config.sleepFollowupTime !== undefined && config.sleepFollowupTime !== null) {
+      if (!hhMmRegex.test(config.sleepFollowupTime)) {
+        throw ApiError.badRequest('Sleep follow-up time must be in HH:mm format');
+      }
+    }
+    if (config.sleepFollowupEnabled !== undefined && config.sleepFollowupEnabled !== null) {
+      if (typeof config.sleepFollowupEnabled !== 'boolean') {
+        throw ApiError.badRequest('Sleep follow-up enabled must be a boolean value');
       }
     }
 
@@ -825,7 +841,14 @@ export const automationController = {
       };
 
       // ── 7. Reminder Performance (per job type) ─────────────────────────
-      const jobTypes = ['MEAL_REMINDER', 'MEAL_FOLLOWUP', 'WATER_REMINDER', 'SLEEP_REMINDER'];
+      const jobTypes = [
+        'MEAL_REMINDER',
+        'MEAL_FOLLOWUP',
+        'WATER_REMINDER',
+        'WATER_FOLLOWUP',
+        'SLEEP_REMINDER',
+        'SLEEP_FOLLOWUP',
+      ];
       const reminderPerformance = {};
 
       for (const jt of jobTypes) {
