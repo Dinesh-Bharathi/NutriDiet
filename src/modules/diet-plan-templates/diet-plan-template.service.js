@@ -5,6 +5,7 @@ import { dietPlanRepository } from '../diet-plans/diet-plan.repository.js';
 import { clientRepository } from '../clients/client.repository.js';
 import ApiError from '../../utils/ApiError.js';
 import prisma from '../../lib/prisma.js';
+import { automationService } from '../automation/automation.service.js';
 
 // Helper to validate active plan collision
 async function checkActivePlanCollision(tenantId, clientId, planId, startDate, endDate) {
@@ -19,6 +20,23 @@ async function checkActivePlanCollision(tenantId, clientId, planId, startDate, e
 
     const overlaps = (start <= otherEnd || otherEnd === null) && (otherStart <= end || end === null);
     if (overlaps) {
+      if (otherEnd !== null && otherEnd < new Date()) {
+        // Archive the previous active plan whose end date has passed
+        await prisma.dietPlan.update({
+          where: { id: other.id },
+          data: { status: 'ARCHIVED' },
+        });
+
+        // Cancel its automations if they are active
+        const automation = await prisma.dietPlanAutomation.findFirst({
+          where: { tenantId, dietPlanId: other.id, status: 'ACTIVE' },
+        });
+        if (automation) {
+          await automationService.cancelAutomation(tenantId, automation.id);
+        }
+
+        continue;
+      }
       throw ApiError.badRequest('An active plan already exists for this client with overlapping dates');
     }
   }
@@ -372,7 +390,7 @@ export const dietPlanTemplateService = {
           },
         },
       });
-    });
+    }, { maxWait: 15000, timeout: 30000 });
   },
 
   async applyTemplateToClient(tenantId, templateId, clientId, creatorId, details) {
@@ -558,7 +576,7 @@ export const dietPlanTemplateService = {
     if (details.tx) {
       return executeCloning(details.tx);
     } else {
-      return prisma.$transaction(executeCloning);
+      return prisma.$transaction(executeCloning, { maxWait: 15000, timeout: 30000 });
     }
   },
 };

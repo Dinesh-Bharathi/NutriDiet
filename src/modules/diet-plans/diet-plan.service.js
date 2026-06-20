@@ -62,6 +62,23 @@ async function checkActivePlanCollision(tenantId, clientId, planId, startDate, e
     // Two active plans overlap if (start <= otherEnd || otherEnd == null) && (otherStart <= end || end == null)
     const overlaps = (start <= otherEnd || otherEnd === null) && (otherStart <= end || end === null);
     if (overlaps) {
+      if (otherEnd !== null && otherEnd < new Date()) {
+        // Archive the previous active plan whose end date has passed
+        await prisma.dietPlan.update({
+          where: { id: other.id },
+          data: { status: 'ARCHIVED' },
+        });
+
+        // Cancel its automations if they are active
+        const automation = await prisma.dietPlanAutomation.findFirst({
+          where: { tenantId, dietPlanId: other.id, status: 'ACTIVE' },
+        });
+        if (automation) {
+          await automationService.cancelAutomation(tenantId, automation.id);
+        }
+
+        continue;
+      }
       throw ApiError.badRequest('An active plan already exists for this client with overlapping dates');
     }
   }

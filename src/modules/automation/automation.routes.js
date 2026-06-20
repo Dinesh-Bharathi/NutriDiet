@@ -40,4 +40,7 @@ router.post('/automations/:id/generate', asyncHandler(automationController.regen
 router.get('/automations/:id/generate-preview', asyncHandler(automationController.generatePreview));
 router.put('/automations/:id/settings', asyncHandler(automationController.updateAutomationSettings));
 
+// ── Analytics (Operations Command Center) ───────────────────────────────────
+router.get('/analytics', asyncHandler(automationController.getOperationsAnalytics));
+
 export default router;
