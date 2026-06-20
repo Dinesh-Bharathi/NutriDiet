@@ -1,16 +1,3 @@
-// prisma/schema.prisma
-// ─────────────────────────────────────────────────────────────────────────────
-// Prisma data model for the Nutri-Diet multi-tenant SaaS platform.
-// Phase 1 + 2: Tenant, User, Client, RefreshToken.
-//
-// Rules enforced here:
-//  - Every entity has a UUID primary key (cuid() used for URL-safety + performance)
-//  - Every entity that belongs to a tenant carries a tenantId FK
-//  - Soft-delete via deletedAt (no hard deletes on business data)
-//  - Timestamps (createdAt, updatedAt) on every table
-//  - All string IDs are generated server-side — never trust client-supplied IDs
-// ─────────────────────────────────────────────────────────────────────────────
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -20,9 +7,1483 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// ENUMS
-// ─────────────────────────────────────────────────────────────────────────────
+model Tenant {
+  id                          String                       @id @default(cuid())
+  name                        String
+  slug                        String                       @unique
+  plan                        TenantPlan                   @default(FREE)
+  status                      TenantStatus                 @default(TRIAL)
+  email                       String?
+  phone                       String?
+  address                     String?
+  logoUrl                     String?
+  createdAt                   DateTime                     @default(now())
+  updatedAt                   DateTime                     @updatedAt
+  deletedAt                   DateTime?
+  themeId                     String?
+  countryCode                 String?
+  currencyCode                String                       @default("USD")
+  locale                      String                       @default("en-US")
+  measurementSystem           MeasurementSystem            @default(METRIC)
+  timezone                    String                       @default("UTC")
+  pdfTemplateConfig           Json?
+  addressLine1                String?
+  addressLine2                String?
+  city                        String?
+  country                     String?
+  postalCode                  String?
+  practiceEmail               String?
+  practicePhone               String?
+  state                       String?
+  reminderConfig              Json?
+  assessmentSectionStatuses   AssessmentSectionStatus[]
+  assessmentSnapshots         AssessmentSnapshot[]
+  assessments                 Assessment[]
+  clientAllergies             ClientAllergy[]
+  clientAnthropometricRecords ClientAnthropometricRecord[]
+  clientCheckIns              ClientCheckIn[]
+  clientClinicalProfiles      ClientClinicalProfile[]
+  complianceEvents            ClientComplianceEvent[]
+  clientConditions            ClientCondition[]
+  clientDigestiveIssues       ClientDigestiveIssue[]
+  clientGoalProfiles          ClientGoalProfile[]
+  clientLabResults            ClientLabResult[]
+  clientLifestyleProfiles     ClientLifestyleProfile[]
+  clientMedications           ClientMedication[]
+  clientRiskFlags             ClientRiskFlag[]
+  clientSupplements           ClientSupplement[]
+  clients                     Client[]
+  complianceDailySummaries    ComplianceDailySummary[]
+  dietPlanAutomations         DietPlanAutomation[]
+  dietPlanTemplates           DietPlanTemplate[]
+  dietPlans                   DietPlan[]
+  fileAssets                  FileAsset[]
+  foodCategories              FoodCategory[]
+  foodLibrary                 FoodLibrary[]
+  foodTags                    FoodTag[]
+  labMarkerDefinitions        LabMarkerDefinition[]
+  mealSwapHistories           MealSwapHistory[]
+  notifications               Notification[]
+  reminderExecutions          ReminderExecution[]
+  reminderJobs                ReminderJob[]
+  reminderTemplates           ReminderTemplate[]
+  users                       User[]
+  vaultDocuments              VaultDocument[]
+  whatsAppConnection          WhatsAppConnection?
+  whatsAppConversations       WhatsAppConversation[]
+  whatsAppMessages            WhatsAppMessage[]
+
+  @@index([slug])
+  @@index([status])
+  @@map("tenants")
+}
+
+model User {
+  id                           String                    @id @default(cuid())
+  tenantId                     String
+  email                        String
+  passwordHash                 String
+  firstName                    String
+  lastName                     String
+  role                         Role                      @default(DIETITIAN)
+  status                       UserStatus                @default(PENDING)
+  phone                        String?
+  avatarUrl                    String?
+  emailVerifiedAt              DateTime?
+  lastLoginAt                  DateTime?
+  passwordChangedAt            DateTime?
+  createdAt                    DateTime                  @default(now())
+  updatedAt                    DateTime                  @updatedAt
+  deletedAt                    DateTime?
+  completedAssessmentSections  AssessmentSectionStatus[] @relation("AssessmentSectionCompletedBy")
+  generatedAssessmentSnapshots AssessmentSnapshot[]      @relation("AssessmentSnapshotGenerator")
+  assessments                  Assessment[]
+  reviewedCheckIns             ClientCheckIn[]
+  createdClinicalProfiles      ClientClinicalProfile[]   @relation("ClinicalProfileCreator")
+  generatedRiskFlags           ClientRiskFlag[]          @relation("RiskFlagGenerator")
+  clients                      Client[]                  @relation("AssignedDietitian")
+  dietPlanTemplates            DietPlanTemplate[]
+  dietPlans                    DietPlan[]
+  uploadedFiles                FileAsset[]               @relation("FileUploader")
+  mealSwapHistories            MealSwapHistory[]
+  notificationPreference       NotificationPreference?
+  notifications                Notification[]
+  refreshTokens                RefreshToken[]
+  tenant                       Tenant                    @relation(fields: [tenantId], references: [id])
+  whatsAppMessages             WhatsAppMessage[]
+
+  @@unique([tenantId, email])
+  @@index([tenantId])
+  @@index([tenantId, role])
+  @@index([tenantId, status])
+  @@map("users")
+}
+
+model Client {
+  id                        String                       @id @default(cuid())
+  tenantId                  String
+  dietitianId               String?
+  firstName                 String
+  lastName                  String
+  email                     String?
+  phone                     String?
+  gender                    Gender?
+  dateOfBirth               DateTime?
+  notes                     String?
+  createdAt                 DateTime                     @default(now())
+  updatedAt                 DateTime                     @updatedAt
+  deletedAt                 DateTime?
+  onboardingStatus          OnboardingStatus             @default(PENDING)
+  status                    ClientStatus                 @default(ACTIVE)
+  avatarAssetId             String?
+  addressLine1              String?
+  addressLine2              String?
+  city                      String?
+  country                   String?
+  locale                    String?
+  remindersEnabled          Boolean                      @default(true)
+  state                     String?
+  timezone                  String?
+  assessmentSectionStatuses AssessmentSectionStatus[]
+  assessmentSnapshots       AssessmentSnapshot[]
+  assessments               Assessment[]
+  allergyRecords            ClientAllergy[]
+  anthropometricRecords     ClientAnthropometricRecord[]
+  checkIns                  ClientCheckIn[]
+  clinicalProfile           ClientClinicalProfile?
+  complianceEvents          ClientComplianceEvent[]
+  conditions                ClientCondition[]
+  digestiveIssueRecords     ClientDigestiveIssue[]
+  goalProfiles              ClientGoalProfile[]
+  labResults                ClientLabResult[]
+  lifestyleProfile          ClientLifestyleProfile?
+  medicationRecords         ClientMedication[]
+  riskFlags                 ClientRiskFlag[]
+  supplementRecords         ClientSupplement[]
+  avatarAsset               FileAsset?                   @relation("ClientAvatar", fields: [avatarAssetId], references: [id])
+  dietitian                 User?                        @relation("AssignedDietitian", fields: [dietitianId], references: [id])
+  tenant                    Tenant                       @relation(fields: [tenantId], references: [id])
+  complianceDailySummaries  ComplianceDailySummary[]
+  dietPlanAutomations       DietPlanAutomation[]
+  dietPlans                 DietPlan[]
+  reminderJobs              ReminderJob[]
+  vaultDocuments            VaultDocument[]
+  whatsAppConversations     WhatsAppConversation[]
+
+  @@index([tenantId])
+  @@index([tenantId, dietitianId])
+  @@index([tenantId, email])
+  @@map("clients")
+}
+
+model RefreshToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  createdAt DateTime  @default(now())
+  revokedAt DateTime?
+  ipAddress String?
+  userAgent String?
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([userId, revokedAt])
+  @@map("refresh_tokens")
+}
+
+model Assessment {
+  id                    String                       @id @default(cuid())
+  tenantId              String
+  clientId              String
+  createdBy             String
+  title                 String
+  assessmentDate        DateTime
+  heightCm              Float?
+  weightKg              Float?
+  bmi                   Float?
+  goal                  String?
+  activityLevel         ActivityLevel?
+  waterIntakeLiters     Float?
+  sleepHours            Float?
+  medicalConditions     String?
+  allergies             String?
+  medications           String?
+  foodPreferences       String?
+  foodRestrictions      String?
+  notes                 String?
+  createdAt             DateTime                     @default(now())
+  updatedAt             DateTime                     @updatedAt
+  deletedAt             DateTime?
+  goalType              ClientGoalType?
+  sectionStatuses       AssessmentSectionStatus[]
+  snapshots             AssessmentSnapshot[]
+  client                Client                       @relation(fields: [clientId], references: [id])
+  creator               User                         @relation(fields: [createdBy], references: [id])
+  tenant                Tenant                       @relation(fields: [tenantId], references: [id])
+  allergyRecords        ClientAllergy[]
+  anthropometricRecords ClientAnthropometricRecord[]
+  clinicalProfiles      ClientClinicalProfile[]      @relation("LatestAssessmentProfile")
+  conditions            ClientCondition[]
+  digestiveIssueRecords ClientDigestiveIssue[]
+  goalProfiles          ClientGoalProfile[]
+  labResults            ClientLabResult[]
+  lifestyleProfiles     ClientLifestyleProfile[]
+  medicationRecords     ClientMedication[]
+  riskFlags             ClientRiskFlag[]
+  supplementRecords     ClientSupplement[]
+  dietPlans             DietPlan[]
+
+  @@index([tenantId])
+  @@index([clientId])
+  @@index([tenantId, clientId])
+  @@map("assessments")
+}
+
+model ClientClinicalProfile {
+  id                    String                       @id @default(cuid())
+  tenantId              String
+  clientId              String                       @unique
+  latestAssessmentId    String?
+  createdById           String?
+  summaryNotes          String?
+  createdAt             DateTime                     @default(now())
+  updatedAt             DateTime                     @updatedAt
+  deletedAt             DateTime?
+  sectionStatuses       AssessmentSectionStatus[]
+  snapshots             AssessmentSnapshot[]
+  allergies             ClientAllergy[]
+  anthropometricRecords ClientAnthropometricRecord[]
+  client                Client                       @relation(fields: [clientId], references: [id])
+  createdBy             User?                        @relation("ClinicalProfileCreator", fields: [createdById], references: [id])
+  latestAssessment      Assessment?                  @relation("LatestAssessmentProfile", fields: [latestAssessmentId], references: [id])
+  tenant                Tenant                       @relation(fields: [tenantId], references: [id])
+  conditions            ClientCondition[]
+  digestiveIssues       ClientDigestiveIssue[]
+  goalProfiles          ClientGoalProfile[]
+  labResults            ClientLabResult[]
+  lifestyleProfile      ClientLifestyleProfile?
+  medications           ClientMedication[]
+  riskFlags             ClientRiskFlag[]
+  supplements           ClientSupplement[]
+
+  @@unique([tenantId, clientId])
+  @@index([tenantId])
+  @@index([clientId])
+  @@index([latestAssessmentId])
+  @@map("client_clinical_profiles")
+}
+
+model AssessmentSectionStatus {
+  id            String                          @id @default(cuid())
+  tenantId      String
+  clientId      String
+  profileId     String
+  assessmentId  String?
+  section       AssessmentSectionType
+  status        AssessmentSectionWorkflowStatus @default(DRAFT)
+  completedAt   DateTime?
+  completedById String?
+  createdAt     DateTime                        @default(now())
+  updatedAt     DateTime                        @updatedAt
+  deletedAt     DateTime?
+  assessment    Assessment?                     @relation(fields: [assessmentId], references: [id])
+  client        Client                          @relation(fields: [clientId], references: [id])
+  completedBy   User?                           @relation("AssessmentSectionCompletedBy", fields: [completedById], references: [id])
+  profile       ClientClinicalProfile           @relation(fields: [profileId], references: [id])
+  tenant        Tenant                          @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, profileId, section])
+  @@index([tenantId, clientId])
+  @@index([assessmentId])
+  @@map("assessment_section_statuses")
+}
+
+model ClientAnthropometricRecord {
+  id             String                @id @default(cuid())
+  tenantId       String
+  clientId       String
+  profileId      String
+  assessmentId   String?
+  measuredAt     DateTime              @default(now())
+  heightCm       Float?
+  weightKg       Float?
+  bmi            Float?
+  bodyFatPercent Float?
+  leanMassKg     Float?
+  waistCm        Float?
+  hipCm          Float?
+  chestCm        Float?
+  armCm          Float?
+  thighCm        Float?
+  neckCm         Float?
+  notes          String?
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+  deletedAt      DateTime?
+  assessment     Assessment?           @relation(fields: [assessmentId], references: [id])
+  client         Client                @relation(fields: [clientId], references: [id])
+  profile        ClientClinicalProfile @relation(fields: [profileId], references: [id])
+  tenant         Tenant                @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId, clientId])
+  @@index([profileId])
+  @@index([assessmentId])
+  @@index([measuredAt])
+  @@map("client_anthropometric_records")
+}
+
+model ClientCondition {
+  id           String                @id @default(cuid())
+  tenantId     String
+  clientId     String
+  profileId    String
+  assessmentId String?
+  name         String
+  status       String?
+  diagnosedAt  DateTime?
+  notes        String?
+  createdAt    DateTime              @default(now())
+  updatedAt    DateTime              @updatedAt
+  deletedAt    DateTime?
+  assessment   Assessment?           @relation(fields: [assessmentId], references: [id])
+  client       Client                @relation(fields: [clientId], references: [id])
+  profile      ClientClinicalProfile @relation(fields: [profileId], references: [id])
+  tenant       Tenant                @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId, clientId])
+  @@index([tenantId, name])
+  @@index([profileId])
+  @@map("client_conditions")
+}
+
+model ClientAllergy {
+  id           String                @id @default(cuid())
+  tenantId     String
+  clientId     String
+  profileId    String
+  assessmentId String?
+  allergen     String
+  reaction     String?
+  severity     String?
+  notes        String?
+  createdAt    DateTime              @default(now())
+  updatedAt    DateTime              @updatedAt
+  deletedAt    DateTime?
+  assessment   Assessment?           @relation(fields: [assessmentId], references: [id])
+  client       Client                @relation(fields: [clientId], references: [id])
+  profile      ClientClinicalProfile @relation(fields: [profileId], references: [id])
+  tenant       Tenant                @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId, clientId])
+  @@index([tenantId, allergen])
+  @@index([profileId])
+  @@map("client_allergies")
+}
+
+model ClientMedication {
+  id           String                @id @default(cuid())
+  tenantId     String
+  clientId     String
+  profileId    String
+  assessmentId String?
+  name         String
+  dosage       String?
+  frequency    String?
+  startedAt    DateTime?
+  notes        String?
+  createdAt    DateTime              @default(now())
+  updatedAt    DateTime              @updatedAt
+  deletedAt    DateTime?
+  assessment   Assessment?           @relation(fields: [assessmentId], references: [id])
+  client       Client                @relation(fields: [clientId], references: [id])
+  profile      ClientClinicalProfile @relation(fields: [profileId], references: [id])
+  tenant       Tenant                @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId, clientId])
+  @@index([tenantId, name])
+  @@index([profileId])
+  @@map("client_medications")
+}
+
+model ClientSupplement {
+  id           String                @id @default(cuid())
+  tenantId     String
+  clientId     String
+  profileId    String
+  assessmentId String?
+  name         String
+  dosage       String?
+  frequency    String?
+  startedAt    DateTime?
+  notes        String?
+  createdAt    DateTime              @default(now())
+  updatedAt    DateTime              @updatedAt
+  deletedAt    DateTime?
+  assessment   Assessment?           @relation(fields: [assessmentId], references: [id])
+  client       Client                @relation(fields: [clientId], references: [id])
+  profile      ClientClinicalProfile @relation(fields: [profileId], references: [id])
+  tenant       Tenant                @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId, clientId])
+  @@index([tenantId, name])
+  @@index([profileId])
+  @@map("client_supplements")
+}
+
+model ClientDigestiveIssue {
+  id           String                @id @default(cuid())
+  tenantId     String
+  clientId     String
+  profileId    String
+  assessmentId String?
+  name         String
+  severity     String?
+  triggers     String?
+  notes        String?
+  createdAt    DateTime              @default(now())
+  updatedAt    DateTime              @updatedAt
+  deletedAt    DateTime?
+  assessment   Assessment?           @relation(fields: [assessmentId], references: [id])
+  client       Client                @relation(fields: [clientId], references: [id])
+  profile      ClientClinicalProfile @relation(fields: [profileId], references: [id])
+  tenant       Tenant                @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId, clientId])
+  @@index([tenantId, name])
+  @@index([profileId])
+  @@map("client_digestive_issues")
+}
+
+model ClientLifestyleProfile {
+  id                String                @id @default(cuid())
+  tenantId          String
+  clientId          String                @unique
+  profileId         String                @unique
+  assessmentId      String?
+  occupation        String?
+  workSchedule      String?
+  sleepHours        Float?
+  stressLevel       Int?
+  hydrationLiters   Float?
+  trainingFrequency String?
+  activityLevel     ActivityLevel?
+  mealTiming        String?
+  metadata          Json?
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+  deletedAt         DateTime?
+  assessment        Assessment?           @relation(fields: [assessmentId], references: [id])
+  client            Client                @relation(fields: [clientId], references: [id])
+  profile           ClientClinicalProfile @relation(fields: [profileId], references: [id])
+  tenant            Tenant                @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, clientId])
+  @@index([tenantId, clientId])
+  @@index([assessmentId])
+  @@map("client_lifestyle_profiles")
+}
+
+model ClientGoalProfile {
+  id             String                @id @default(cuid())
+  tenantId       String
+  clientId       String
+  profileId      String
+  assessmentId   String?
+  goalType       ClientGoalType
+  targetWeightKg Float?
+  targetDate     DateTime?
+  status         ClientGoalStatus      @default(ACTIVE)
+  notes          String?
+  versionNumber  Int                   @default(1)
+  startedAt      DateTime              @default(now())
+  endedAt        DateTime?
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+  deletedAt      DateTime?
+  assessment     Assessment?           @relation(fields: [assessmentId], references: [id])
+  client         Client                @relation(fields: [clientId], references: [id])
+  profile        ClientClinicalProfile @relation(fields: [profileId], references: [id])
+  tenant         Tenant                @relation(fields: [tenantId], references: [id])
+  dietPlans      DietPlan[]
+
+  @@index([tenantId, clientId])
+  @@index([profileId])
+  @@index([status])
+  @@map("client_goal_profiles")
+}
+
+model LabMarkerDefinition {
+  id             String            @id @default(cuid())
+  tenantId       String?
+  markerKey      String
+  name           String
+  category       String?
+  defaultUnit    String?
+  referenceRange Json?
+  sortOrder      Int               @default(1)
+  isSystem       Boolean           @default(false)
+  isActive       Boolean           @default(true)
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  deletedAt      DateTime?
+  labResults     ClientLabResult[]
+  tenant         Tenant?           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, markerKey])
+  @@index([tenantId])
+  @@index([markerKey])
+  @@index([isSystem, isActive])
+  @@map("lab_marker_definitions")
+}
+
+model ClientLabResult {
+  id                     String                @id @default(cuid())
+  tenantId               String
+  clientId               String
+  profileId              String
+  assessmentId           String?
+  markerDefinitionId     String?
+  markerKey              String
+  markerName             String
+  valueNumeric           Float?
+  valueText              String?
+  unit                   String?
+  collectedDate          DateTime?
+  resultDate             DateTime?
+  referenceRangeSnapshot Json?
+  isAbnormal             Boolean               @default(false)
+  severity               LabResultSeverity?
+  flagReason             String?
+  source                 String?
+  notes                  String?
+  metadata               Json?
+  createdAt              DateTime              @default(now())
+  updatedAt              DateTime              @updatedAt
+  deletedAt              DateTime?
+  documentPageReference  String?
+  vaultDocumentId        String?
+  assessment             Assessment?           @relation(fields: [assessmentId], references: [id])
+  client                 Client                @relation(fields: [clientId], references: [id])
+  markerDefinition       LabMarkerDefinition?  @relation(fields: [markerDefinitionId], references: [id])
+  profile                ClientClinicalProfile @relation(fields: [profileId], references: [id])
+  tenant                 Tenant                @relation(fields: [tenantId], references: [id])
+  vaultDocument          VaultDocument?        @relation(fields: [vaultDocumentId], references: [id])
+
+  @@index([tenantId, clientId])
+  @@index([profileId])
+  @@index([assessmentId])
+  @@index([markerDefinitionId])
+  @@index([markerKey])
+  @@index([resultDate])
+  @@index([isAbnormal])
+  @@index([vaultDocumentId])
+  @@map("client_lab_results")
+}
+
+model ClientRiskFlag {
+  id             String                @id @default(cuid())
+  tenantId       String
+  clientId       String
+  profileId      String
+  assessmentId   String?
+  flagType       String
+  severity       RiskFlagSeverity
+  reason         String
+  sourceDomain   String?
+  sourceRecordId String?
+  status         RiskFlagStatus        @default(ACTIVE)
+  generatedById  String?
+  generatedAt    DateTime              @default(now())
+  acknowledgedAt DateTime?
+  resolvedAt     DateTime?
+  metadata       Json?
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+  deletedAt      DateTime?
+  assessment     Assessment?           @relation(fields: [assessmentId], references: [id])
+  client         Client                @relation(fields: [clientId], references: [id])
+  generatedBy    User?                 @relation("RiskFlagGenerator", fields: [generatedById], references: [id])
+  profile        ClientClinicalProfile @relation(fields: [profileId], references: [id])
+  tenant         Tenant                @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId, clientId])
+  @@index([profileId])
+  @@index([status])
+  @@index([severity])
+  @@index([sourceDomain, sourceRecordId])
+  @@map("client_risk_flags")
+}
+
+model AssessmentSnapshot {
+  id              String                @id @default(cuid())
+  tenantId        String
+  clientId        String
+  profileId       String
+  assessmentId    String?
+  version         Int
+  snapshot        Json
+  sourceUpdatedAt DateTime?
+  generatedById   String?
+  generatedAt     DateTime              @default(now())
+  createdAt       DateTime              @default(now())
+  assessment      Assessment?           @relation(fields: [assessmentId], references: [id])
+  client          Client                @relation(fields: [clientId], references: [id])
+  generatedBy     User?                 @relation("AssessmentSnapshotGenerator", fields: [generatedById], references: [id])
+  profile         ClientClinicalProfile @relation(fields: [profileId], references: [id])
+  tenant          Tenant                @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, clientId, version])
+  @@index([tenantId, clientId])
+  @@index([profileId])
+  @@index([assessmentId])
+  @@map("assessment_snapshots")
+}
+
+model DietPlan {
+  id              String               @id @default(cuid())
+  tenantId        String
+  clientId        String
+  assessmentId    String?
+  title           String
+  description     String?
+  dailyCalories   Int?
+  proteinGrams    Float?
+  carbGrams       Float?
+  fatGrams        Float?
+  startDate       DateTime?
+  endDate         DateTime?
+  status          DietPlanStatus       @default(DRAFT)
+  createdBy       String
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+  deletedAt       DateTime?
+  totalCalories   Int                  @default(0)
+  totalCarbs      Float                @default(0)
+  totalFat        Float                @default(0)
+  totalProtein    Float                @default(0)
+  versionNumber   Int                  @default(1)
+  cycleStartDate  DateTime?
+  goalProfileId   String?
+  hydration       String?
+  instructions    String?
+  lifestyleAdvice String?
+  mealPrepNotes   String?
+  recommendations String?
+  supplementNotes String?
+  checkIns        ClientCheckIn[]
+  automations     DietPlanAutomation[]
+  cycles          DietPlanCycle[]
+  meals           DietPlanMeal[]
+  assessment      Assessment?          @relation(fields: [assessmentId], references: [id])
+  client          Client               @relation(fields: [clientId], references: [id])
+  creator         User                 @relation(fields: [createdBy], references: [id])
+  goalProfile     ClientGoalProfile?   @relation(fields: [goalProfileId], references: [id])
+  tenant          Tenant               @relation(fields: [tenantId], references: [id])
+  reminderJobs    ReminderJob[]
+
+  @@index([tenantId])
+  @@index([clientId])
+  @@index([tenantId, clientId])
+  @@map("diet_plans")
+}
+
+model DietPlanMeal {
+  id         String             @id @default(cuid())
+  dietPlanId String
+  name       MealType
+  mealOrder  Int
+  mealTime   String?
+  notes      String?
+  cycleDayId String?
+  items      DietPlanMealItem[]
+  cycleDay   DietPlanCycleDay?  @relation(fields: [cycleDayId], references: [id], onDelete: Cascade)
+  dietPlan   DietPlan           @relation(fields: [dietPlanId], references: [id], onDelete: Cascade)
+
+  @@index([dietPlanId])
+  @@index([cycleDayId])
+  @@map("diet_plan_meals")
+}
+
+model DietPlanMealItem {
+  id            String         @id @default(cuid())
+  mealId        String
+  foodName      String
+  quantity      Float
+  unit          String
+  calories      Float?
+  protein       Float?
+  carbs         Float?
+  fat           Float?
+  notes         String?
+  foodLibraryId String?
+  sourceType    FoodSourceType @default(CUSTOM)
+  foodLibrary   FoodLibrary?   @relation(fields: [foodLibraryId], references: [id])
+  meal          DietPlanMeal   @relation(fields: [mealId], references: [id], onDelete: Cascade)
+
+  @@index([mealId])
+  @@index([foodLibraryId])
+  @@map("diet_plan_meal_items")
+}
+
+model FoodLibrary {
+  id                String                     @id @default(cuid())
+  tenantId          String
+  foodName          String
+  defaultQuantity   Float
+  defaultUnit       String
+  servingSize       Float
+  servingUnit       String
+  calories          Float?
+  protein           Float?
+  carbs             Float?
+  fat               Float?
+  createdAt         DateTime                   @default(now())
+  updatedAt         DateTime                   @updatedAt
+  deletedAt         DateTime?
+  brandName         String?
+  categoryId        String?
+  commonName        String?
+  searchKeywords    String?
+  status            FoodStatus                 @default(ACTIVE)
+  isSystem          Boolean                    @default(false)
+  mealItems         DietPlanMealItem[]
+  templateMealItems DietPlanTemplateMealItem[]
+  sourceEquivalents FoodEquivalent[]           @relation("SourceEquivalent")
+  targetEquivalents FoodEquivalent[]           @relation("TargetEquivalent")
+  category          FoodCategory?              @relation(fields: [categoryId], references: [id])
+  tenant            Tenant                     @relation(fields: [tenantId], references: [id])
+  servings          FoodServing[]
+  tagMappings       FoodTagMapping[]
+  originalFoodSwaps MealSwapHistory[]          @relation("OriginalFoodSwaps")
+  targetFoodSwaps   MealSwapHistory[]          @relation("TargetFoodSwaps")
+
+  @@index([tenantId])
+  @@index([tenantId, foodName])
+  @@index([tenantId, categoryId])
+  @@index([tenantId, status])
+  @@map("food_library")
+}
+
+model DietPlanTemplate {
+  id              String                 @id @default(cuid())
+  tenantId        String
+  title           String
+  description     String?
+  dailyCalories   Int?
+  proteinGrams    Float?
+  carbGrams       Float?
+  fatGrams        Float?
+  totalCalories   Int                    @default(0)
+  totalProtein    Float                  @default(0)
+  totalCarbs      Float                  @default(0)
+  totalFat        Float                  @default(0)
+  isPublic        Boolean                @default(false)
+  createdBy       String
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+  deletedAt       DateTime?
+  goalType        ClientGoalType?
+  hydration       String?
+  instructions    String?
+  lifestyleAdvice String?
+  mealPrepNotes   String?
+  recommendations String?
+  supplementNotes String?
+  meals           DietPlanTemplateMeal[]
+  creator         User                   @relation(fields: [createdBy], references: [id])
+  tenant          Tenant                 @relation(fields: [tenantId], references: [id])
+  cycles          TemplateCycle[]
+
+  @@index([tenantId])
+  @@map("diet_plan_templates")
+}
+
+model DietPlanTemplateMeal {
+  id         String                     @id @default(cuid())
+  templateId String
+  name       MealType
+  mealOrder  Int
+  mealTime   String?
+  notes      String?
+  cycleDayId String?
+  items      DietPlanTemplateMealItem[]
+  cycleDay   TemplateCycleDay?          @relation(fields: [cycleDayId], references: [id], onDelete: Cascade)
+  template   DietPlanTemplate           @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@index([templateId])
+  @@index([cycleDayId])
+  @@map("diet_plan_template_meals")
+}
+
+model DietPlanTemplateMealItem {
+  id            String               @id @default(cuid())
+  mealId        String
+  foodName      String
+  quantity      Float
+  unit          String
+  calories      Float?
+  protein       Float?
+  carbs         Float?
+  fat           Float?
+  notes         String?
+  foodLibraryId String?
+  sourceType    FoodSourceType       @default(CUSTOM)
+  foodLibrary   FoodLibrary?         @relation(fields: [foodLibraryId], references: [id])
+  meal          DietPlanTemplateMeal @relation(fields: [mealId], references: [id], onDelete: Cascade)
+
+  @@index([mealId])
+  @@index([foodLibraryId])
+  @@map("diet_plan_template_meal_items")
+}
+
+model ClientCheckIn {
+  id                String        @id @default(cuid())
+  tenantId          String
+  clientId          String
+  dietPlanId        String?
+  checkInDate       DateTime
+  submittedAt       DateTime?
+  reviewedAt        DateTime?
+  reviewedBy        String?
+  status            CheckInStatus @default(PENDING)
+  requiresFollowUp  Boolean       @default(false)
+  weightKg          Float?
+  waistCm           Float?
+  hipCm             Float?
+  chestCm           Float?
+  armCm             Float?
+  thighCm           Float?
+  waterIntakeLiters Float?
+  sleepHours        Float?
+  exerciseDays      Int?
+  energyLevel       Int?
+  stressLevel       Int?
+  moodLevel         Int?
+  planAdherence     Int?
+  adherenceNotes    String?
+  clientNotes       String?
+  practitionerNotes String?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  deletedAt         DateTime?
+  client            Client        @relation(fields: [clientId], references: [id])
+  dietPlan          DietPlan?     @relation(fields: [dietPlanId], references: [id])
+  reviewer          User?         @relation(fields: [reviewedBy], references: [id])
+  tenant            Tenant        @relation(fields: [tenantId], references: [id])
+
+  @@index([clientId])
+  @@index([tenantId])
+  @@index([status])
+  @@index([submittedAt])
+  @@index([checkInDate])
+  @@index([clientId, checkInDate])
+  @@map("client_check_ins")
+}
+
+model DietPlanCycle {
+  id          String             @id @default(cuid())
+  dietPlanId  String
+  name        String
+  description String?
+  startDay    Int                @default(1)
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+  days        DietPlanCycleDay[]
+  dietPlan    DietPlan           @relation(fields: [dietPlanId], references: [id], onDelete: Cascade)
+
+  @@index([dietPlanId])
+  @@map("diet_plan_cycles")
+}
+
+model DietPlanCycleDay {
+  id              String         @id @default(cuid())
+  cycleId         String
+  dayNumber       Int
+  dayLabel        String
+  description     String?
+  isActive        Boolean        @default(true)
+  plannedCalories Int            @default(0)
+  plannedProtein  Float          @default(0)
+  plannedCarbs    Float          @default(0)
+  plannedFat      Float          @default(0)
+  cycle           DietPlanCycle  @relation(fields: [cycleId], references: [id], onDelete: Cascade)
+  meals           DietPlanMeal[]
+
+  @@index([cycleId])
+  @@map("diet_plan_cycle_days")
+}
+
+model TemplateCycle {
+  id          String             @id @default(cuid())
+  templateId  String
+  name        String
+  description String?
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+  days        TemplateCycleDay[]
+  template    DietPlanTemplate   @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@index([templateId])
+  @@map("template_cycles")
+}
+
+model TemplateCycleDay {
+  id              String                 @id @default(cuid())
+  cycleId         String
+  dayNumber       Int
+  dayLabel        String
+  description     String?
+  isActive        Boolean                @default(true)
+  plannedCalories Int                    @default(0)
+  plannedProtein  Float                  @default(0)
+  plannedCarbs    Float                  @default(0)
+  plannedFat      Float                  @default(0)
+  meals           DietPlanTemplateMeal[]
+  cycle           TemplateCycle          @relation(fields: [cycleId], references: [id], onDelete: Cascade)
+
+  @@index([cycleId])
+  @@map("template_cycle_days")
+}
+
+model FoodCategory {
+  id               String         @id @default(cuid())
+  tenantId         String
+  name             String
+  description      String?
+  isSystem         Boolean        @default(false)
+  parentCategoryId String?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  deletedAt        DateTime?
+  parentCategory   FoodCategory?  @relation("CategoryHierarchy", fields: [parentCategoryId], references: [id])
+  children         FoodCategory[] @relation("CategoryHierarchy")
+  tenant           Tenant         @relation(fields: [tenantId], references: [id])
+  foods            FoodLibrary[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@map("food_categories")
+}
+
+model FoodTag {
+  id           String           @id @default(cuid())
+  tenantId     String
+  name         String
+  description  String?
+  isSystem     Boolean          @default(false)
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+  deletedAt    DateTime?
+  foodMappings FoodTagMapping[]
+  tenant       Tenant           @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@map("food_tags")
+}
+
+model FoodTagMapping {
+  id        String      @id @default(cuid())
+  foodId    String
+  tagId     String
+  createdAt DateTime    @default(now())
+  food      FoodLibrary @relation(fields: [foodId], references: [id], onDelete: Cascade)
+  tag       FoodTag     @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@unique([foodId, tagId])
+  @@index([foodId])
+  @@index([tagId])
+  @@map("food_tag_mappings")
+}
+
+model FoodServing {
+  id           String              @id @default(cuid())
+  foodId       String
+  name         String
+  grams        Float
+  unitType     FoodServingUnitType
+  isDefault    Boolean             @default(false)
+  displayOrder Int                 @default(1)
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+  food         FoodLibrary         @relation(fields: [foodId], references: [id], onDelete: Cascade)
+
+  @@index([foodId])
+  @@map("food_servings")
+}
+
+model FoodEquivalent {
+  id              String          @id @default(cuid())
+  sourceFoodId    String
+  targetFoodId    String
+  equivalencyType EquivalencyType
+  similarityScore Int             @default(100)
+  createdAt       DateTime        @default(now())
+  sourceFood      FoodLibrary     @relation("SourceEquivalent", fields: [sourceFoodId], references: [id], onDelete: Cascade)
+  targetFood      FoodLibrary     @relation("TargetEquivalent", fields: [targetFoodId], references: [id], onDelete: Cascade)
+
+  @@unique([sourceFoodId, targetFoodId, equivalencyType])
+  @@index([sourceFoodId])
+  @@index([targetFoodId])
+  @@map("food_equivalents")
+}
+
+model MealSwapHistory {
+  id             String       @id @default(cuid())
+  tenantId       String
+  mealItemId     String?
+  originalFoodId String
+  targetFoodId   String
+  swapStrategy   SwapStrategy
+  scope          SwapScope
+  matchScore     Int?
+  quantityBefore Float
+  quantityAfter  Float
+  performedBy    String
+  createdAt      DateTime     @default(now())
+  originalFood   FoodLibrary  @relation("OriginalFoodSwaps", fields: [originalFoodId], references: [id])
+  user           User         @relation(fields: [performedBy], references: [id])
+  targetFood     FoodLibrary  @relation("TargetFoodSwaps", fields: [targetFoodId], references: [id])
+  tenant         Tenant       @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId])
+  @@index([performedBy])
+  @@index([originalFoodId])
+  @@index([targetFoodId])
+  @@map("meal_swap_histories")
+}
+
+model FileAsset {
+  id                String           @id @default(cuid())
+  tenantId          String
+  entityType        FileEntityType
+  entityId          String
+  folder            String
+  publicId          String
+  assetId           String?
+  version           Int              @default(1)
+  isLatest          Boolean          @default(true)
+  storageProvider   StorageProvider  @default(CLOUDINARY)
+  resourceType      String
+  fileName          String
+  originalName      String
+  mimeType          String
+  extension         String
+  fileSize          Int
+  url               String
+  secureUrl         String
+  checksum          String?
+  uploadedBy        String
+  visibility        FileVisibility   @default(PRIVATE)
+  status            FileStatus       @default(ACTIVE)
+  metadata          Json?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  deletedAt         DateTime?
+  whatsAppMessageId String?
+  clientsAsAvatar   Client[]         @relation("ClientAvatar")
+  tenant            Tenant           @relation(fields: [tenantId], references: [id])
+  user              User             @relation("FileUploader", fields: [uploadedBy], references: [id])
+  whatsAppMessage   WhatsAppMessage? @relation(fields: [whatsAppMessageId], references: [id])
+  vaultDocument     VaultDocument?
+
+  @@index([tenantId])
+  @@index([tenantId, entityType, entityId])
+  @@index([status])
+  @@index([visibility])
+  @@map("file_assets")
+}
+
+model VaultDocument {
+  id          String            @id @default(cuid())
+  tenantId    String
+  clientId    String
+  assetId     String            @unique
+  category    String
+  description String?           @db.VarChar(500)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  deletedAt   DateTime?
+  labResults  ClientLabResult[]
+  asset       FileAsset         @relation(fields: [assetId], references: [id])
+  client      Client            @relation(fields: [clientId], references: [id])
+  tenant      Tenant            @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId, clientId, deletedAt])
+  @@map("vault_documents")
+}
+
+model WhatsAppConnection {
+  id                         String                   @id @default(cuid())
+  tenantId                   String                   @unique
+  status                     WhatsAppConnectionStatus @default(NOT_CONFIGURED)
+  provider                   String?                  @default("WHATSAPP")
+  tokenType                  String?
+  scope                      String?
+  metaBusinessId             String?
+  wabaId                     String?
+  phoneNumberId              String?
+  businessAccountId          String?
+  displayPhoneNumber         String?
+  verifiedName               String?
+  accessToken                String?
+  refreshToken               String?
+  tokenExpiresAt             DateTime?
+  webhookVerified            Boolean                  @default(false)
+  connectedAt                DateTime?
+  lastSyncAt                 DateTime?
+  createdAt                  DateTime                 @default(now())
+  updatedAt                  DateTime                 @updatedAt
+  credentialFingerprint      String?
+  lastError                  String?
+  lastErrorAt                DateTime?
+  lastErrorCode              String?
+  lastSuccessfulValidationAt DateTime?
+  lastValidatedAt            DateTime?
+  validationAttempts         Int                      @default(0)
+  tenant                     Tenant                   @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId])
+  @@map("whatsapp_connections")
+}
+
+model WhatsAppConversation {
+  id                        String            @id @default(cuid())
+  tenantId                  String
+  clientId                  String
+  optInStatus               Boolean           @default(false)
+  optInCapturedAt           DateTime?
+  lastMessageId             String?
+  lastMessageText           String?           @db.VarChar(500)
+  lastMessageAt             DateTime?
+  unreadCount               Int               @default(0)
+  isArchived                Boolean           @default(false)
+  isMuted                   Boolean           @default(false)
+  conversationStartedAt     DateTime?
+  lastInboundAt             DateTime?
+  lastOutboundAt            DateTime?
+  lastClientMessageAt       DateTime?
+  lastPractitionerMessageAt DateTime?
+  createdAt                 DateTime          @default(now())
+  updatedAt                 DateTime          @updatedAt
+  client                    Client            @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  tenant                    Tenant            @relation(fields: [tenantId], references: [id])
+  messages                  WhatsAppMessage[]
+
+  @@unique([tenantId, clientId])
+  @@index([tenantId])
+  @@index([clientId])
+  @@map("whatsapp_conversations")
+}
+
+model WhatsAppMessage {
+  id                   String                   @id @default(cuid())
+  tenantId             String
+  conversationId       String
+  metaMessageId        String?                  @unique
+  direction            WhatsAppMessageDirection
+  type                 WhatsAppMessageType
+  status               WhatsAppMessageStatus    @default(QUEUED)
+  senderType           WhatsAppSenderType
+  source               WhatsAppMessageSource    @default(MANUAL)
+  body                 String?
+  templateName         String?
+  templateLanguage     String?                  @db.VarChar(10)
+  mediaMimeType        String?                  @db.VarChar(100)
+  mediaSize            Int?
+  senderUserId         String?
+  senderRole           Role?
+  senderName           String?                  @db.VarChar(100)
+  senderPhone          String?                  @db.VarChar(30)
+  createdByUserId      String?
+  errorText            String?
+  lastErrorCode        String?                  @db.VarChar(50)
+  sentAt               DateTime?
+  deliveredAt          DateTime?
+  readAt               DateTime?
+  failedAt             DateTime?
+  deletedAt            DateTime?
+  deletedByUserId      String?
+  createdAt            DateTime                 @default(now())
+  updatedAt            DateTime                 @updatedAt
+  contactName          String?                  @db.VarChar(255)
+  contactPayload       Json?
+  contactPhones        Json?
+  interactivePayload   Json?
+  locationAddress      String?
+  locationLatitude     Float?
+  locationLongitude    Float?
+  locationName         String?                  @db.VarChar(255)
+  mediaDurationSeconds Int?
+  mediaFileName        String?                  @db.VarChar(255)
+  mediaHeight          Int?
+  mediaUrl             String?
+  mediaWidth           Int?
+  previewText          String?                  @db.VarChar(500)
+  replyPreviewText     String?
+  replyToMessageId     String?
+  replyToMetaMessageId String?
+  storageFileId        String?
+  deleteSource         String?                  @db.VarChar(20)
+  deletedBy            String?                  @db.VarChar(100)
+  attachments          FileAsset[]
+  conversation         WhatsAppConversation     @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  senderUser           User?                    @relation(fields: [senderUserId], references: [id])
+  tenant               Tenant                   @relation(fields: [tenantId], references: [id])
+  reactions            WhatsAppReaction[]
+
+  @@index([tenantId])
+  @@index([conversationId])
+  @@index([metaMessageId])
+  @@index([senderUserId])
+  @@index([createdAt])
+  @@map("whatsapp_messages")
+}
+
+model WhatsAppReaction {
+  id            String          @id @default(cuid())
+  tenantId      String
+  messageId     String
+  metaMessageId String?         @db.VarChar(100)
+  senderPhone   String          @db.VarChar(30)
+  senderName    String?         @db.VarChar(100)
+  emoji         String          @db.VarChar(50)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  message       WhatsAppMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, senderPhone])
+  @@index([tenantId])
+  @@index([messageId])
+  @@map("whatsapp_reactions")
+}
+
+model Notification {
+  id         String    @id @default(cuid())
+  tenantId   String
+  userId     String
+  type       String
+  title      String
+  message    String
+  entityType String?
+  entityId   String?
+  priority   String    @default("NORMAL")
+  actionUrl  String?
+  metadata   Json?
+  isRead     Boolean   @default(false)
+  readAt     DateTime?
+  isArchived Boolean   @default(false)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  tenant     Tenant    @relation(fields: [tenantId], references: [id])
+  user       User      @relation(fields: [userId], references: [id])
+
+  @@index([tenantId, userId])
+  @@index([tenantId, userId, isRead])
+  @@index([tenantId, userId, isArchived])
+  @@index([createdAt])
+  @@map("notifications")
+}
+
+model NotificationPreference {
+  id                   String   @id @default(cuid())
+  userId               String   @unique
+  browserNotifications Boolean  @default(true)
+  inAppNotifications   Boolean  @default(true)
+  soundNotifications   Boolean  @default(true)
+  soundVolume          Int      @default(80)
+  categories           Json?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  soundId              String   @default("message-default")
+  user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("notification_preferences")
+}
+
+model DietPlanAutomation {
+  id                 String                  @id @default(cuid())
+  tenantId           String
+  clientId           String
+  dietPlanId         String
+  status             AutomationStatus        @default(ACTIVE)
+  activatedAt        DateTime?
+  activatedBy        String?
+  startDate          DateTime?
+  stoppedAt          DateTime?
+  createdAt          DateTime                @default(now())
+  updatedAt          DateTime                @updatedAt
+  sleepEnabled       Boolean                 @default(true)
+  sleepTime          String?                 @default("22:00")
+  version            Int                     @default(1)
+  waterCustomTimes   Json?
+  waterEnabled       Boolean                 @default(true)
+  waterFrequencyType String                  @default("FREQUENCY")
+  waterIntervalHours Int?                    @default(2)
+  complianceEvents   ClientComplianceEvent[]
+  client             Client                  @relation(fields: [clientId], references: [id])
+  dietPlan           DietPlan                @relation(fields: [dietPlanId], references: [id])
+  tenant             Tenant                  @relation(fields: [tenantId], references: [id])
+  reminderJobs       ReminderJob[]
+
+  @@index([tenantId])
+  @@index([tenantId, clientId])
+  @@index([tenantId, clientId, status])
+  @@index([tenantId, status])
+  @@map("diet_plan_automations")
+}
+
+model ReminderJob {
+  id                String                 @id @default(cuid())
+  tenantId          String
+  clientId          String
+  dietPlanId        String
+  jobType           ReminderJobType
+  scheduledFor      DateTime
+  timezone          String
+  status            ReminderJobStatus      @default(PENDING)
+  executedAt        DateTime?
+  errorText         String?
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
+  attempts          Int                    @default(0)
+  automationId      String
+  channel           ReminderChannel        @default(WHATSAPP)
+  compiledMessage   String?
+  compiledTitle     String?
+  payload           Json?
+  queueJobId        String?
+  templateId        String?
+  automationVersion Int                    @default(1)
+  templateVersion   Int?
+  complianceEventId String?
+  sentMetaMessageId String?                @db.VarChar(100)
+  isArchived        Boolean                @default(false)
+  complianceEvent   ClientComplianceEvent?
+  executions        ReminderExecution[]
+  automation        DietPlanAutomation     @relation(fields: [automationId], references: [id], onDelete: Cascade)
+  client            Client                 @relation(fields: [clientId], references: [id])
+  dietPlan          DietPlan               @relation(fields: [dietPlanId], references: [id])
+  template          ReminderTemplate?      @relation(fields: [templateId], references: [id])
+  tenant            Tenant                 @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId])
+  @@index([tenantId, isArchived])
+  @@index([tenantId, clientId])
+  @@index([status, scheduledFor])
+  @@index([tenantId, status])
+  @@map("reminder_jobs")
+}
+
+model ReminderTemplate {
+  id              String               @id @default(cuid())
+  tenantId        String?
+  name            String
+  type            ReminderTemplateType
+  title           String
+  message         String
+  isDefault       Boolean              @default(false)
+  isActive        Boolean              @default(true)
+  version         Int                  @default(1)
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+  buttons         Json?
+  config          Json?
+  buttonVersion   Int                  @default(1)
+  templateButtons Json?
+  reminderJobs    ReminderJob[]
+  tenant          Tenant?              @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId])
+  @@map("reminder_templates")
+}
+
+model ReminderExecution {
+  id            String            @id @default(cuid())
+  tenantId      String
+  reminderJobId String
+  status        ReminderJobStatus
+  executedAt    DateTime
+  errorMessage  String?
+  metadata      Json?
+  createdAt     DateTime          @default(now())
+  metaMessageId String?           @db.VarChar(100)
+  reminderJob   ReminderJob       @relation(fields: [reminderJobId], references: [id], onDelete: Cascade)
+  tenant        Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([reminderJobId])
+  @@map("reminder_executions")
+}
+
+model ClientComplianceEvent {
+  id                     String                 @id @default(cuid())
+  tenantId               String
+  clientId               String
+  automationId           String
+  reminderJobId          String                 @unique
+  templateId             String?
+  templateVersion        Int?
+  responseType           ComplianceResponseType @default(NO_RESPONSE)
+  responseRaw            String?
+  responseValue          Json?
+  responseLatencySeconds Int?
+  source                 String?
+  status                 ComplianceStatus       @default(PENDING)
+  metaMessageId          String?                @db.VarChar(100)
+  mealType               String?
+  mealName               String?
+  mealTime               String?
+  compiledTitle          String?
+  compiledMessage        String?
+  localDate              String
+  respondedAt            DateTime?
+  responseWindowClosesAt DateTime
+  createdAt              DateTime               @default(now())
+  updatedAt              DateTime               @updatedAt
+  scheduledFor           DateTime
+  automation             DietPlanAutomation     @relation(fields: [automationId], references: [id], onDelete: Cascade)
+  client                 Client                 @relation(fields: [clientId], references: [id])
+  reminderJob            ReminderJob            @relation(fields: [reminderJobId], references: [id], onDelete: Cascade)
+  tenant                 Tenant                 @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId])
+  @@index([tenantId, clientId])
+  @@index([tenantId, clientId, createdAt])
+  @@index([status, responseWindowClosesAt])
+  @@map("client_compliance_events")
+}
+
+model ComplianceDailySummary {
+  id                       String   @id @default(cuid())
+  tenantId                 String
+  clientId                 String
+  date                     DateTime
+  mealCompliancePercent    Float    @default(0)
+  waterCompliancePercent   Float    @default(0)
+  sleepCompliancePercent   Float    @default(0)
+  overallCompliancePercent Float    @default(0)
+  responseCount            Int      @default(0)
+  noResponseCount          Int      @default(0)
+  currentStreak            Int      @default(0)
+  longestStreak            Int      @default(0)
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
+  mealsCompleted           Int      @default(0)
+  mealsTotal               Int      @default(0)
+  sleepCompleted           Int      @default(0)
+  sleepTotal               Int      @default(0)
+  waterCompleted           Int      @default(0)
+  waterTotal               Int      @default(0)
+  client                   Client   @relation(fields: [clientId], references: [id])
+  tenant                   Tenant   @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, clientId, date])
+  @@index([tenantId, clientId])
+  @@map("compliance_daily_summaries")
+}
 
 enum WhatsAppConnectionStatus {
   NOT_CONFIGURED
@@ -157,247 +1618,6 @@ enum ReminderJobStatus {
   CANCELLED
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// TENANT
-// Top-level multi-tenancy entity. Every business (clinic, coach, dietitian)
-// is a Tenant. All data queries MUST include tenantId in the WHERE clause.
-// ─────────────────────────────────────────────────────────────────────────────
-
-model Tenant {
-  id     String       @id @default(cuid())
-  name   String
-  slug   String       @unique
-  plan   TenantPlan   @default(FREE)
-  status TenantStatus @default(TRIAL)
-
-  // Optional contact info
-  email             String?
-  phone             String?
-  address           String?
-  logoUrl           String?
-  themeId           String?
-  countryCode       String?
-  timezone          String            @default("UTC")
-  locale            String            @default("en-US")
-  currencyCode      String            @default("USD")
-  measurementSystem MeasurementSystem @default(METRIC)
-  pdfTemplateConfig Json?
-
-  // Practice branding fields
-  practiceEmail String?
-  practicePhone String?
-  addressLine1  String?
-  addressLine2  String?
-  city          String?
-  state         String?
-  country       String?
-  postalCode    String?
-  reminderConfig      Json?
-
-  // Timestamps
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  deletedAt DateTime?
-
-  // Relations
-  users                       User[]
-  clients                     Client[]
-  assessments                 Assessment[]
-  dietPlans                   DietPlan[]
-  foodLibrary                 FoodLibrary[]
-  dietPlanTemplates           DietPlanTemplate[]
-  clientCheckIns              ClientCheckIn[]
-  foodCategories              FoodCategory[]
-  foodTags                    FoodTag[]
-  mealSwapHistories           MealSwapHistory[]
-  clientClinicalProfiles      ClientClinicalProfile[]
-  assessmentSectionStatuses   AssessmentSectionStatus[]
-  clientAnthropometricRecords ClientAnthropometricRecord[]
-  clientConditions            ClientCondition[]
-  clientAllergies             ClientAllergy[]
-  clientMedications           ClientMedication[]
-  clientSupplements           ClientSupplement[]
-  clientDigestiveIssues       ClientDigestiveIssue[]
-  clientLifestyleProfiles     ClientLifestyleProfile[]
-  clientGoalProfiles          ClientGoalProfile[]
-  labMarkerDefinitions        LabMarkerDefinition[]
-  clientLabResults            ClientLabResult[]
-  clientRiskFlags             ClientRiskFlag[]
-  assessmentSnapshots         AssessmentSnapshot[]
-  fileAssets                  FileAsset[]
-  vaultDocuments              VaultDocument[]
-  whatsAppConnection          WhatsAppConnection?
-  whatsAppConversations       WhatsAppConversation[]
-  whatsAppMessages            WhatsAppMessage[]
-  notifications               Notification[]
-  dietPlanAutomations         DietPlanAutomation[]
-  reminderJobs                ReminderJob[]
-  reminderTemplates           ReminderTemplate[]
-  reminderExecutions          ReminderExecution[]
-  complianceEvents            ClientComplianceEvent[]
-  complianceDailySummaries    ComplianceDailySummary[]
-
-  @@index([slug])
-  @@index([status])
-  @@map("tenants")
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// USER
-// Platform users (staff side): OWNER, ADMIN, DIETITIAN, ASSISTANT.
-// CLIENT role users have a corresponding Client record.
-// ─────────────────────────────────────────────────────────────────────────────
-
-model User {
-  id           String     @id @default(cuid())
-  tenantId     String
-  email        String
-  passwordHash String
-  firstName    String
-  lastName     String
-  role         Role       @default(DIETITIAN)
-  status       UserStatus @default(PENDING)
-  phone        String?
-  avatarUrl    String?
-
-  // Security
-  emailVerifiedAt   DateTime?
-  lastLoginAt       DateTime?
-  passwordChangedAt DateTime?
-
-  // Timestamps
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  deletedAt DateTime?
-
-  // Relations
-  tenant                       Tenant                    @relation(fields: [tenantId], references: [id])
-  clients                      Client[]                  @relation("AssignedDietitian")
-  refreshTokens                RefreshToken[]
-  assessments                  Assessment[]
-  dietPlans                    DietPlan[]
-  dietPlanTemplates            DietPlanTemplate[]
-  reviewedCheckIns             ClientCheckIn[]
-  mealSwapHistories            MealSwapHistory[]
-  createdClinicalProfiles      ClientClinicalProfile[]   @relation("ClinicalProfileCreator")
-  completedAssessmentSections  AssessmentSectionStatus[] @relation("AssessmentSectionCompletedBy")
-  generatedRiskFlags           ClientRiskFlag[]          @relation("RiskFlagGenerator")
-  generatedAssessmentSnapshots AssessmentSnapshot[]      @relation("AssessmentSnapshotGenerator")
-  uploadedFiles                FileAsset[]               @relation("FileUploader")
-  whatsAppMessages             WhatsAppMessage[]
-  notifications                Notification[]
-  notificationPreference       NotificationPreference?
-
-  // Compound unique: email must be unique within a tenant (not globally)
-  @@unique([tenantId, email])
-  @@index([tenantId])
-  @@index([tenantId, role])
-  @@index([tenantId, status])
-  @@map("users")
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// CLIENT
-// End-users of the wellness service. Can have a linked User account (for
-// portal access) or exist as a practitioner-managed record only.
-// ─────────────────────────────────────────────────────────────────────────────
-
-model Client {
-  id          String  @id @default(cuid())
-  tenantId    String
-  dietitianId String? // Assigned practitioner (User with DIETITIAN role)
-
-  // Identity
-  firstName     String
-  lastName      String
-  email         String?
-  phone         String?
-  gender        Gender?
-  dateOfBirth   DateTime?
-  avatarAssetId String?
-
-  // Health context (non-PHI; PHI goes in a separate encrypted table in Phase 2)
-  notes String?
-
-  addressLine1     String?
-  addressLine2     String?
-  city             String?
-  state            String?
-  country          String? // ISO alpha-2 e.g. "IN"
-  timezone         String?
-  locale           String?
-  remindersEnabled Boolean @default(true)
-
-  status           ClientStatus     @default(ACTIVE)
-  onboardingStatus OnboardingStatus @default(PENDING)
-
-  // Timestamps
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  deletedAt DateTime?
-
-  // Relations
-  tenant                    Tenant                       @relation(fields: [tenantId], references: [id])
-  dietitian                 User?                        @relation("AssignedDietitian", fields: [dietitianId], references: [id])
-  avatarAsset               FileAsset?                   @relation("ClientAvatar", fields: [avatarAssetId], references: [id])
-  assessments               Assessment[]
-  dietPlans                 DietPlan[]
-  checkIns                  ClientCheckIn[]
-  clinicalProfile           ClientClinicalProfile?
-  assessmentSectionStatuses AssessmentSectionStatus[]
-  anthropometricRecords     ClientAnthropometricRecord[]
-  conditions                ClientCondition[]
-  allergyRecords            ClientAllergy[]
-  medicationRecords         ClientMedication[]
-  supplementRecords         ClientSupplement[]
-  digestiveIssueRecords     ClientDigestiveIssue[]
-  lifestyleProfile          ClientLifestyleProfile?
-  goalProfiles              ClientGoalProfile[]
-  labResults                ClientLabResult[]
-  riskFlags                 ClientRiskFlag[]
-  assessmentSnapshots       AssessmentSnapshot[]
-  vaultDocuments            VaultDocument[]
-  whatsAppConversations     WhatsAppConversation[]
-  dietPlanAutomations       DietPlanAutomation[]
-  reminderJobs              ReminderJob[]
-  complianceEvents          ClientComplianceEvent[]
-  complianceDailySummaries  ComplianceDailySummary[]
-
-  @@index([tenantId])
-  @@index([tenantId, dietitianId])
-  @@index([tenantId, email])
-  @@map("clients")
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// REFRESH TOKEN
-// Stores hashed refresh tokens for secure rotation.
-// Raw token is sent to client; only SHA-256 hash lives in DB.
-// Token reuse triggers immediate revocation of all user sessions.
-// ─────────────────────────────────────────────────────────────────────────────
-
-model RefreshToken {
-  id        String    @id @default(cuid())
-  userId    String
-  tokenHash String    @unique // SHA-256(rawToken) — NEVER the raw token
-  expiresAt DateTime
-  createdAt DateTime  @default(now())
-  revokedAt DateTime?
-  ipAddress String?
-  userAgent String?
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId])
-  @@index([userId, revokedAt])
-  @@map("refresh_tokens")
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// ASSESSMENT
-// Clinical assessment records.
-// ─────────────────────────────────────────────────────────────────────────────
-
 enum ActivityLevel {
   SEDENTARY
   LIGHTLY_ACTIVE
@@ -405,490 +1625,6 @@ enum ActivityLevel {
   VERY_ACTIVE
   EXTRA_ACTIVE
 }
-
-model Assessment {
-  id        String @id @default(cuid())
-  tenantId  String
-  clientId  String
-  createdBy String
-
-  title          String
-  assessmentDate DateTime
-
-  heightCm Float?
-  weightKg Float?
-  bmi      Float?
-
-  goal     String?
-  goalType ClientGoalType?
-
-  activityLevel     ActivityLevel?
-  waterIntakeLiters Float?
-
-  sleepHours Float?
-
-  medicalConditions String?
-  allergies         String?
-  medications       String?
-
-  foodPreferences  String?
-  foodRestrictions String?
-
-  notes String?
-
-  // Timestamps
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  deletedAt DateTime?
-
-  // Relations
-  tenant                Tenant                       @relation(fields: [tenantId], references: [id])
-  client                Client                       @relation(fields: [clientId], references: [id])
-  creator               User                         @relation(fields: [createdBy], references: [id])
-  dietPlans             DietPlan[]
-  clinicalProfiles      ClientClinicalProfile[]      @relation("LatestAssessmentProfile")
-  sectionStatuses       AssessmentSectionStatus[]
-  anthropometricRecords ClientAnthropometricRecord[]
-  conditions            ClientCondition[]
-  allergyRecords        ClientAllergy[]
-  medicationRecords     ClientMedication[]
-  supplementRecords     ClientSupplement[]
-  digestiveIssueRecords ClientDigestiveIssue[]
-  lifestyleProfiles     ClientLifestyleProfile[]
-  goalProfiles          ClientGoalProfile[]
-  labResults            ClientLabResult[]
-  riskFlags             ClientRiskFlag[]
-  snapshots             AssessmentSnapshot[]
-
-  @@index([tenantId])
-  @@index([clientId])
-  @@index([tenantId, clientId])
-  @@map("assessments")
-}
-
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// ASSESSMENT V2 FOUNDATION
-// Client-owned clinical intake foundation. Existing Assessment remains the
-// backward-compatible intake summary and diet plan reference.
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-
-model ClientClinicalProfile {
-  id                 String    @id @default(cuid())
-  tenantId           String
-  clientId           String    @unique
-  latestAssessmentId String?
-  createdById        String?
-  summaryNotes       String?
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @updatedAt
-  deletedAt          DateTime?
-
-  tenant                Tenant                       @relation(fields: [tenantId], references: [id])
-  client                Client                       @relation(fields: [clientId], references: [id])
-  latestAssessment      Assessment?                  @relation("LatestAssessmentProfile", fields: [latestAssessmentId], references: [id], onDelete: SetNull)
-  createdBy             User?                        @relation("ClinicalProfileCreator", fields: [createdById], references: [id], onDelete: SetNull)
-  sectionStatuses       AssessmentSectionStatus[]
-  anthropometricRecords ClientAnthropometricRecord[]
-  conditions            ClientCondition[]
-  allergies             ClientAllergy[]
-  medications           ClientMedication[]
-  supplements           ClientSupplement[]
-  digestiveIssues       ClientDigestiveIssue[]
-  lifestyleProfile      ClientLifestyleProfile?
-  goalProfiles          ClientGoalProfile[]
-  labResults            ClientLabResult[]
-  riskFlags             ClientRiskFlag[]
-  snapshots             AssessmentSnapshot[]
-
-  @@unique([tenantId, clientId])
-  @@index([tenantId])
-  @@index([clientId])
-  @@index([latestAssessmentId])
-  @@map("client_clinical_profiles")
-}
-
-model AssessmentSectionStatus {
-  id            String                          @id @default(cuid())
-  tenantId      String
-  clientId      String
-  profileId     String
-  assessmentId  String?
-  section       AssessmentSectionType
-  status        AssessmentSectionWorkflowStatus @default(DRAFT)
-  completedAt   DateTime?
-  completedById String?
-  createdAt     DateTime                        @default(now())
-  updatedAt     DateTime                        @updatedAt
-  deletedAt     DateTime?
-
-  tenant      Tenant                @relation(fields: [tenantId], references: [id])
-  client      Client                @relation(fields: [clientId], references: [id])
-  profile     ClientClinicalProfile @relation(fields: [profileId], references: [id])
-  assessment  Assessment?           @relation(fields: [assessmentId], references: [id], onDelete: SetNull)
-  completedBy User?                 @relation("AssessmentSectionCompletedBy", fields: [completedById], references: [id], onDelete: SetNull)
-
-  @@unique([tenantId, profileId, section])
-  @@index([tenantId, clientId])
-  @@index([assessmentId])
-  @@map("assessment_section_statuses")
-}
-
-model ClientAnthropometricRecord {
-  id             String    @id @default(cuid())
-  tenantId       String
-  clientId       String
-  profileId      String
-  assessmentId   String?
-  measuredAt     DateTime  @default(now())
-  heightCm       Float?
-  weightKg       Float?
-  bmi            Float?
-  bodyFatPercent Float?
-  leanMassKg     Float?
-  waistCm        Float?
-  hipCm          Float?
-  chestCm        Float?
-  armCm          Float?
-  thighCm        Float?
-  neckCm         Float?
-  notes          String?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
-  deletedAt      DateTime?
-
-  tenant     Tenant                @relation(fields: [tenantId], references: [id])
-  client     Client                @relation(fields: [clientId], references: [id])
-  profile    ClientClinicalProfile @relation(fields: [profileId], references: [id])
-  assessment Assessment?           @relation(fields: [assessmentId], references: [id], onDelete: SetNull)
-
-  @@index([tenantId, clientId])
-  @@index([profileId])
-  @@index([assessmentId])
-  @@index([measuredAt])
-  @@map("client_anthropometric_records")
-}
-
-model ClientCondition {
-  id           String    @id @default(cuid())
-  tenantId     String
-  clientId     String
-  profileId    String
-  assessmentId String?
-  name         String
-  status       String?
-  diagnosedAt  DateTime?
-  notes        String?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-  deletedAt    DateTime?
-
-  tenant     Tenant                @relation(fields: [tenantId], references: [id])
-  client     Client                @relation(fields: [clientId], references: [id])
-  profile    ClientClinicalProfile @relation(fields: [profileId], references: [id])
-  assessment Assessment?           @relation(fields: [assessmentId], references: [id], onDelete: SetNull)
-
-  @@index([tenantId, clientId])
-  @@index([tenantId, name])
-  @@index([profileId])
-  @@map("client_conditions")
-}
-
-model ClientAllergy {
-  id           String    @id @default(cuid())
-  tenantId     String
-  clientId     String
-  profileId    String
-  assessmentId String?
-  allergen     String
-  reaction     String?
-  severity     String?
-  notes        String?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-  deletedAt    DateTime?
-
-  tenant     Tenant                @relation(fields: [tenantId], references: [id])
-  client     Client                @relation(fields: [clientId], references: [id])
-  profile    ClientClinicalProfile @relation(fields: [profileId], references: [id])
-  assessment Assessment?           @relation(fields: [assessmentId], references: [id], onDelete: SetNull)
-
-  @@index([tenantId, clientId])
-  @@index([tenantId, allergen])
-  @@index([profileId])
-  @@map("client_allergies")
-}
-
-model ClientMedication {
-  id           String    @id @default(cuid())
-  tenantId     String
-  clientId     String
-  profileId    String
-  assessmentId String?
-  name         String
-  dosage       String?
-  frequency    String?
-  startedAt    DateTime?
-  notes        String?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-  deletedAt    DateTime?
-
-  tenant     Tenant                @relation(fields: [tenantId], references: [id])
-  client     Client                @relation(fields: [clientId], references: [id])
-  profile    ClientClinicalProfile @relation(fields: [profileId], references: [id])
-  assessment Assessment?           @relation(fields: [assessmentId], references: [id], onDelete: SetNull)
-
-  @@index([tenantId, clientId])
-  @@index([tenantId, name])
-  @@index([profileId])
-  @@map("client_medications")
-}
-
-model ClientSupplement {
-  id           String    @id @default(cuid())
-  tenantId     String
-  clientId     String
-  profileId    String
-  assessmentId String?
-  name         String
-  dosage       String?
-  frequency    String?
-  startedAt    DateTime?
-  notes        String?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-  deletedAt    DateTime?
-
-  tenant     Tenant                @relation(fields: [tenantId], references: [id])
-  client     Client                @relation(fields: [clientId], references: [id])
-  profile    ClientClinicalProfile @relation(fields: [profileId], references: [id])
-  assessment Assessment?           @relation(fields: [assessmentId], references: [id], onDelete: SetNull)
-
-  @@index([tenantId, clientId])
-  @@index([tenantId, name])
-  @@index([profileId])
-  @@map("client_supplements")
-}
-
-model ClientDigestiveIssue {
-  id           String    @id @default(cuid())
-  tenantId     String
-  clientId     String
-  profileId    String
-  assessmentId String?
-  name         String
-  severity     String?
-  triggers     String?
-  notes        String?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-  deletedAt    DateTime?
-
-  tenant     Tenant                @relation(fields: [tenantId], references: [id])
-  client     Client                @relation(fields: [clientId], references: [id])
-  profile    ClientClinicalProfile @relation(fields: [profileId], references: [id])
-  assessment Assessment?           @relation(fields: [assessmentId], references: [id], onDelete: SetNull)
-
-  @@index([tenantId, clientId])
-  @@index([tenantId, name])
-  @@index([profileId])
-  @@map("client_digestive_issues")
-}
-
-model ClientLifestyleProfile {
-  id                String         @id @default(cuid())
-  tenantId          String
-  clientId          String         @unique
-  profileId         String         @unique
-  assessmentId      String?
-  occupation        String?
-  workSchedule      String?
-  sleepHours        Float?
-  stressLevel       Int?
-  hydrationLiters   Float?
-  trainingFrequency String?
-  activityLevel     ActivityLevel?
-  mealTiming        String?
-  metadata          Json?
-  createdAt         DateTime       @default(now())
-  updatedAt         DateTime       @updatedAt
-  deletedAt         DateTime?
-
-  tenant     Tenant                @relation(fields: [tenantId], references: [id])
-  client     Client                @relation(fields: [clientId], references: [id])
-  profile    ClientClinicalProfile @relation(fields: [profileId], references: [id])
-  assessment Assessment?           @relation(fields: [assessmentId], references: [id], onDelete: SetNull)
-
-  @@unique([tenantId, clientId])
-  @@index([tenantId, clientId])
-  @@index([assessmentId])
-  @@map("client_lifestyle_profiles")
-}
-
-model ClientGoalProfile {
-  id             String           @id @default(cuid())
-  tenantId       String
-  clientId       String
-  profileId      String
-  assessmentId   String?
-  goalType       ClientGoalType
-  targetWeightKg Float?
-  targetDate     DateTime?
-  status         ClientGoalStatus @default(ACTIVE)
-  notes          String?
-  versionNumber  Int              @default(1)
-  startedAt      DateTime         @default(now())
-  endedAt        DateTime?
-  createdAt      DateTime         @default(now())
-  updatedAt      DateTime         @updatedAt
-  deletedAt      DateTime?
-
-  tenant     Tenant                @relation(fields: [tenantId], references: [id])
-  client     Client                @relation(fields: [clientId], references: [id])
-  profile    ClientClinicalProfile @relation(fields: [profileId], references: [id])
-  assessment Assessment?           @relation(fields: [assessmentId], references: [id], onDelete: SetNull)
-  dietPlans  DietPlan[]
-
-  @@index([tenantId, clientId])
-  @@index([profileId])
-  @@index([status])
-  @@map("client_goal_profiles")
-}
-
-model LabMarkerDefinition {
-  id             String    @id @default(cuid())
-  tenantId       String?
-  markerKey      String
-  name           String
-  category       String?
-  defaultUnit    String?
-  referenceRange Json?
-  sortOrder      Int       @default(1)
-  isSystem       Boolean   @default(false)
-  isActive       Boolean   @default(true)
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
-  deletedAt      DateTime?
-
-  tenant     Tenant?           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  labResults ClientLabResult[]
-
-  @@unique([tenantId, markerKey])
-  @@index([tenantId])
-  @@index([markerKey])
-  @@index([isSystem, isActive])
-  @@map("lab_marker_definitions")
-}
-
-model ClientLabResult {
-  id                     String             @id @default(cuid())
-  tenantId               String
-  clientId               String
-  profileId              String
-  assessmentId           String?
-  markerDefinitionId     String?
-  markerKey              String
-  markerName             String
-  valueNumeric           Float?
-  valueText              String?
-  unit                   String?
-  collectedDate          DateTime?
-  resultDate             DateTime?
-  referenceRangeSnapshot Json?
-  isAbnormal             Boolean            @default(false)
-  severity               LabResultSeverity?
-  flagReason             String?
-  source                 String?
-  notes                  String?
-  metadata               Json?
-  vaultDocumentId        String?
-  documentPageReference  String?
-  createdAt              DateTime           @default(now())
-  updatedAt              DateTime           @updatedAt
-  deletedAt              DateTime?
-
-  tenant           Tenant                @relation(fields: [tenantId], references: [id])
-  client           Client                @relation(fields: [clientId], references: [id])
-  profile          ClientClinicalProfile @relation(fields: [profileId], references: [id])
-  assessment       Assessment?           @relation(fields: [assessmentId], references: [id], onDelete: SetNull)
-  markerDefinition LabMarkerDefinition?  @relation(fields: [markerDefinitionId], references: [id], onDelete: SetNull)
-  vaultDocument    VaultDocument?        @relation(fields: [vaultDocumentId], references: [id], onDelete: SetNull)
-
-  @@index([tenantId, clientId])
-  @@index([profileId])
-  @@index([assessmentId])
-  @@index([markerDefinitionId])
-  @@index([markerKey])
-  @@index([resultDate])
-  @@index([isAbnormal])
-  @@index([vaultDocumentId])
-  @@map("client_lab_results")
-}
-
-model ClientRiskFlag {
-  id             String           @id @default(cuid())
-  tenantId       String
-  clientId       String
-  profileId      String
-  assessmentId   String?
-  flagType       String
-  severity       RiskFlagSeverity
-  reason         String
-  sourceDomain   String?
-  sourceRecordId String?
-  status         RiskFlagStatus   @default(ACTIVE)
-  generatedById  String?
-  generatedAt    DateTime         @default(now())
-  acknowledgedAt DateTime?
-  resolvedAt     DateTime?
-  metadata       Json?
-  createdAt      DateTime         @default(now())
-  updatedAt      DateTime         @updatedAt
-  deletedAt      DateTime?
-
-  tenant      Tenant                @relation(fields: [tenantId], references: [id])
-  client      Client                @relation(fields: [clientId], references: [id])
-  profile     ClientClinicalProfile @relation(fields: [profileId], references: [id])
-  assessment  Assessment?           @relation(fields: [assessmentId], references: [id], onDelete: SetNull)
-  generatedBy User?                 @relation("RiskFlagGenerator", fields: [generatedById], references: [id], onDelete: SetNull)
-
-  @@index([tenantId, clientId])
-  @@index([profileId])
-  @@index([status])
-  @@index([severity])
-  @@index([sourceDomain, sourceRecordId])
-  @@map("client_risk_flags")
-}
-
-model AssessmentSnapshot {
-  id              String    @id @default(cuid())
-  tenantId        String
-  clientId        String
-  profileId       String
-  assessmentId    String?
-  version         Int
-  snapshot        Json
-  sourceUpdatedAt DateTime?
-  generatedById   String?
-  generatedAt     DateTime  @default(now())
-  createdAt       DateTime  @default(now())
-
-  tenant      Tenant                @relation(fields: [tenantId], references: [id])
-  client      Client                @relation(fields: [clientId], references: [id])
-  profile     ClientClinicalProfile @relation(fields: [profileId], references: [id])
-  assessment  Assessment?           @relation(fields: [assessmentId], references: [id], onDelete: SetNull)
-  generatedBy User?                 @relation("AssessmentSnapshotGenerator", fields: [generatedById], references: [id], onDelete: SetNull)
-
-  @@unique([tenantId, clientId, version])
-  @@index([tenantId, clientId])
-  @@index([profileId])
-  @@index([assessmentId])
-  @@map("assessment_snapshots")
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// DIET PLAN
-// ─────────────────────────────────────────────────────────────────────────────
 
 enum DietPlanStatus {
   DRAFT
@@ -905,386 +1641,15 @@ enum MealType {
   BEDTIME
 }
 
-model DietPlan {
-  id           String  @id @default(cuid())
-  tenantId     String
-  clientId     String
-  assessmentId String?
-
-  title         String
-  description   String?
-  goalProfileId String?
-
-  dailyCalories Int?
-  proteinGrams  Float?
-  carbGrams     Float?
-  fatGrams      Float?
-
-  // Aggregated macros
-  totalCalories Int   @default(0)
-  totalProtein  Float @default(0)
-  totalCarbs    Float @default(0)
-  totalFat      Float @default(0)
-
-  // Data Sections (HTML content from RichTextEditor)
-  instructions    String? @db.Text
-  recommendations String? @db.Text
-  lifestyleAdvice String? @db.Text
-  hydration       String? @db.Text
-  supplementNotes String? @db.Text
-  mealPrepNotes   String? @db.Text
-
-  // Versioning
-  versionNumber Int @default(1)
-
-  startDate DateTime?
-  endDate   DateTime?
-
-  status DietPlanStatus @default(DRAFT)
-
-  createdBy      String
-  cycleStartDate DateTime?
-
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  deletedAt DateTime?
-
-  // Relations
-  tenant       Tenant               @relation(fields: [tenantId], references: [id])
-  client       Client               @relation(fields: [clientId], references: [id])
-  assessment   Assessment?          @relation(fields: [assessmentId], references: [id])
-  goalProfile  ClientGoalProfile?   @relation(fields: [goalProfileId], references: [id])
-  creator      User                 @relation(fields: [createdBy], references: [id])
-  meals        DietPlanMeal[]
-  checkIns     ClientCheckIn[]
-  cycles       DietPlanCycle[]
-  automations  DietPlanAutomation[]
-  reminderJobs ReminderJob[]
-
-  @@index([tenantId])
-  @@index([clientId])
-  @@index([tenantId, clientId])
-  @@map("diet_plans")
-}
-
-model DietPlanMeal {
-  id         String   @id @default(cuid())
-  dietPlanId String
-  name       MealType
-  mealOrder  Int
-  mealTime   String?
-  notes      String?
-  cycleDayId String?
-
-  // Relations
-  dietPlan DietPlan           @relation(fields: [dietPlanId], references: [id], onDelete: Cascade)
-  cycleDay DietPlanCycleDay?  @relation(fields: [cycleDayId], references: [id], onDelete: Cascade)
-  items    DietPlanMealItem[]
-
-  @@index([dietPlanId])
-  @@index([cycleDayId])
-  @@map("diet_plan_meals")
-}
-
-model DietPlanMealItem {
-  id            String         @id @default(cuid())
-  mealId        String
-  foodLibraryId String?
-  foodName      String
-  sourceType    FoodSourceType @default(CUSTOM)
-  quantity      Float
-  unit          String
-  calories      Float?
-  protein       Float?
-  carbs         Float?
-  fat           Float?
-  notes         String?
-
-  // Relations
-  meal        DietPlanMeal @relation(fields: [mealId], references: [id], onDelete: Cascade)
-  foodLibrary FoodLibrary? @relation(fields: [foodLibraryId], references: [id], onDelete: SetNull)
-
-  @@index([mealId])
-  @@index([foodLibraryId])
-  @@map("diet_plan_meal_items")
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// FOOD LIBRARY
-// ─────────────────────────────────────────────────────────────────────────────
-
 enum FoodSourceType {
   CUSTOM
   SYSTEM
 }
 
-model FoodLibrary {
-  id              String     @id @default(cuid())
-  tenantId        String
-  foodName        String
-  isSystem        Boolean    @default(false)
-  defaultQuantity Float
-  defaultUnit     String
-  servingSize     Float
-  servingUnit     String
-  calories        Float?
-  protein         Float?
-  carbs           Float?
-  fat             Float?
-  categoryId      String?
-  searchKeywords  String?
-  commonName      String?
-  brandName       String?
-  status          FoodStatus @default(ACTIVE)
-  createdAt       DateTime   @default(now())
-  updatedAt       DateTime   @updatedAt
-  deletedAt       DateTime?
-
-  // Relations
-  tenant            Tenant                     @relation(fields: [tenantId], references: [id])
-  mealItems         DietPlanMealItem[]
-  templateMealItems DietPlanTemplateMealItem[]
-  category          FoodCategory?              @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  tagMappings       FoodTagMapping[]
-  servings          FoodServing[]
-  sourceEquivalents FoodEquivalent[]           @relation("SourceEquivalent")
-  targetEquivalents FoodEquivalent[]           @relation("TargetEquivalent")
-  originalFoodSwaps MealSwapHistory[]          @relation("OriginalFoodSwaps")
-  targetFoodSwaps   MealSwapHistory[]          @relation("TargetFoodSwaps")
-
-  @@index([tenantId])
-  @@index([tenantId, foodName])
-  @@index([tenantId, categoryId])
-  @@index([tenantId, status])
-  @@map("food_library")
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// DIET PLAN TEMPLATES
-// ─────────────────────────────────────────────────────────────────────────────
-
-model DietPlanTemplate {
-  id            String          @id @default(cuid())
-  tenantId      String
-  title         String
-  description   String?
-  goalType      ClientGoalType?
-  dailyCalories Int?
-  proteinGrams  Float?
-  carbGrams     Float?
-  fatGrams      Float?
-
-  // Aggregated macros
-  totalCalories Int   @default(0)
-  totalProtein  Float @default(0)
-  totalCarbs    Float @default(0)
-  totalFat      Float @default(0)
-
-  // Data Sections (HTML content from RichTextEditor)
-  instructions    String? @db.Text
-  recommendations String? @db.Text
-  lifestyleAdvice String? @db.Text
-  hydration       String? @db.Text
-  supplementNotes String? @db.Text
-  mealPrepNotes   String? @db.Text
-
-  isPublic  Boolean   @default(false)
-  createdBy String
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  deletedAt DateTime?
-
-  // Relations
-  tenant  Tenant                 @relation(fields: [tenantId], references: [id])
-  creator User                   @relation(fields: [createdBy], references: [id])
-  meals   DietPlanTemplateMeal[]
-  cycles  TemplateCycle[]
-
-  @@index([tenantId])
-  @@map("diet_plan_templates")
-}
-
-model DietPlanTemplateMeal {
-  id         String   @id @default(cuid())
-  templateId String
-  name       MealType
-  mealOrder  Int
-  mealTime   String?
-  notes      String?
-  cycleDayId String?
-
-  // Relations
-  template DietPlanTemplate           @relation(fields: [templateId], references: [id], onDelete: Cascade)
-  cycleDay TemplateCycleDay?          @relation(fields: [cycleDayId], references: [id], onDelete: Cascade)
-  items    DietPlanTemplateMealItem[]
-
-  @@index([templateId])
-  @@index([cycleDayId])
-  @@map("diet_plan_template_meals")
-}
-
-model DietPlanTemplateMealItem {
-  id            String         @id @default(cuid())
-  mealId        String
-  foodLibraryId String?
-  foodName      String
-  sourceType    FoodSourceType @default(CUSTOM)
-  quantity      Float
-  unit          String
-  calories      Float?
-  protein       Float?
-  carbs         Float?
-  fat           Float?
-  notes         String?
-
-  // Relations
-  meal        DietPlanTemplateMeal @relation(fields: [mealId], references: [id], onDelete: Cascade)
-  foodLibrary FoodLibrary?         @relation(fields: [foodLibraryId], references: [id], onDelete: SetNull)
-
-  @@index([mealId])
-  @@index([foodLibraryId])
-  @@map("diet_plan_template_meal_items")
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// CLIENT CHECK-INS
-// ─────────────────────────────────────────────────────────────────────────────
-
 enum CheckInStatus {
   PENDING
   SUBMITTED
   REVIEWED
-}
-
-model ClientCheckIn {
-  id         String  @id @default(cuid())
-  tenantId   String
-  clientId   String
-  dietPlanId String?
-
-  checkInDate DateTime
-  submittedAt DateTime?
-  reviewedAt  DateTime?
-  reviewedBy  String?
-
-  status           CheckInStatus @default(PENDING)
-  requiresFollowUp Boolean       @default(false)
-
-  // Weight & Measurements
-  weightKg Float?
-  waistCm  Float?
-  hipCm    Float?
-  chestCm  Float?
-  armCm    Float?
-  thighCm  Float?
-
-  // Lifestyle
-  waterIntakeLiters Float?
-  sleepHours        Float?
-  exerciseDays      Int?
-
-  // Self Assessment
-  energyLevel    Int?
-  stressLevel    Int?
-  moodLevel      Int?
-  planAdherence  Int?
-  adherenceNotes String?
-
-  // Notes
-  clientNotes       String?
-  practitionerNotes String?
-
-  // Audit
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  deletedAt DateTime?
-
-  // Relations
-  tenant   Tenant    @relation(fields: [tenantId], references: [id])
-  client   Client    @relation(fields: [clientId], references: [id])
-  dietPlan DietPlan? @relation(fields: [dietPlanId], references: [id], onDelete: SetNull)
-  reviewer User?     @relation(fields: [reviewedBy], references: [id], onDelete: SetNull)
-
-  @@index([clientId])
-  @@index([tenantId])
-  @@index([status])
-  @@index([submittedAt])
-  @@index([checkInDate])
-  @@index([clientId, checkInDate])
-  @@map("client_check_ins")
-}
-
-model DietPlanCycle {
-  id          String   @id @default(cuid())
-  dietPlanId  String
-  name        String
-  description String?
-  startDay    Int      @default(1)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  // Relations
-  dietPlan DietPlan           @relation(fields: [dietPlanId], references: [id], onDelete: Cascade)
-  days     DietPlanCycleDay[]
-
-  @@index([dietPlanId])
-  @@map("diet_plan_cycles")
-}
-
-model DietPlanCycleDay {
-  id              String  @id @default(cuid())
-  cycleId         String
-  dayNumber       Int
-  dayLabel        String
-  description     String?
-  isActive        Boolean @default(true)
-  plannedCalories Int     @default(0)
-  plannedProtein  Float   @default(0)
-  plannedCarbs    Float   @default(0)
-  plannedFat      Float   @default(0)
-
-  // Relations
-  cycle DietPlanCycle  @relation(fields: [cycleId], references: [id], onDelete: Cascade)
-  meals DietPlanMeal[]
-
-  @@index([cycleId])
-  @@map("diet_plan_cycle_days")
-}
-
-model TemplateCycle {
-  id          String   @id @default(cuid())
-  templateId  String
-  name        String
-  description String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  // Relations
-  template DietPlanTemplate   @relation(fields: [templateId], references: [id], onDelete: Cascade)
-  days     TemplateCycleDay[]
-
-  @@index([templateId])
-  @@map("template_cycles")
-}
-
-model TemplateCycleDay {
-  id              String  @id @default(cuid())
-  cycleId         String
-  dayNumber       Int
-  dayLabel        String
-  description     String?
-  isActive        Boolean @default(true)
-  plannedCalories Int     @default(0)
-  plannedProtein  Float   @default(0)
-  plannedCarbs    Float   @default(0)
-  plannedFat      Float   @default(0)
-
-  // Relations
-  cycle TemplateCycle          @relation(fields: [cycleId], references: [id], onDelete: Cascade)
-  meals DietPlanTemplateMeal[]
-
-  @@index([cycleId])
-  @@map("template_cycle_days")
 }
 
 enum EquivalencyType {
@@ -1311,99 +1676,6 @@ enum FoodStatus {
   ARCHIVED
 }
 
-model FoodCategory {
-  id               String    @id @default(cuid())
-  tenantId         String
-  name             String
-  description      String?
-  isSystem         Boolean   @default(false)
-  parentCategoryId String?
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
-  deletedAt        DateTime?
-
-  // Relations
-  tenant         Tenant         @relation(fields: [tenantId], references: [id])
-  parentCategory FoodCategory?  @relation("CategoryHierarchy", fields: [parentCategoryId], references: [id], onDelete: SetNull)
-  children       FoodCategory[] @relation("CategoryHierarchy")
-  foods          FoodLibrary[]
-
-  @@unique([tenantId, name])
-  @@index([tenantId])
-  @@map("food_categories")
-}
-
-model FoodTag {
-  id          String    @id @default(cuid())
-  tenantId    String
-  name        String
-  description String?
-  isSystem    Boolean   @default(false)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  deletedAt   DateTime?
-
-  // Relations
-  tenant       Tenant           @relation(fields: [tenantId], references: [id])
-  foodMappings FoodTagMapping[]
-
-  @@unique([tenantId, name])
-  @@index([tenantId])
-  @@map("food_tags")
-}
-
-model FoodTagMapping {
-  id        String   @id @default(cuid())
-  foodId    String
-  tagId     String
-  createdAt DateTime @default(now())
-
-  // Relations
-  food FoodLibrary @relation(fields: [foodId], references: [id], onDelete: Cascade)
-  tag  FoodTag     @relation(fields: [tagId], references: [id], onDelete: Cascade)
-
-  @@unique([foodId, tagId])
-  @@index([foodId])
-  @@index([tagId])
-  @@map("food_tag_mappings")
-}
-
-model FoodServing {
-  id           String              @id @default(cuid())
-  foodId       String
-  name         String
-  grams        Float
-  unitType     FoodServingUnitType
-  isDefault    Boolean             @default(false)
-  displayOrder Int                 @default(1)
-  createdAt    DateTime            @default(now())
-  updatedAt    DateTime            @updatedAt
-
-  // Relations
-  food FoodLibrary @relation(fields: [foodId], references: [id], onDelete: Cascade)
-
-  @@index([foodId])
-  @@map("food_servings")
-}
-
-model FoodEquivalent {
-  id              String          @id @default(cuid())
-  sourceFoodId    String
-  targetFoodId    String
-  equivalencyType EquivalencyType
-  similarityScore Int             @default(100)
-  createdAt       DateTime        @default(now())
-
-  // Relations
-  sourceFood FoodLibrary @relation("SourceEquivalent", fields: [sourceFoodId], references: [id], onDelete: Cascade)
-  targetFood FoodLibrary @relation("TargetEquivalent", fields: [targetFoodId], references: [id], onDelete: Cascade)
-
-  @@unique([sourceFoodId, targetFoodId, equivalencyType])
-  @@index([sourceFoodId])
-  @@index([targetFoodId])
-  @@map("food_equivalents")
-}
-
 enum SwapStrategy {
   BALANCED_MATCH
   PROTEIN_MATCH
@@ -1419,37 +1691,6 @@ enum SwapScope {
   CYCLE
   CYCLE_DAY
 }
-
-model MealSwapHistory {
-  id             String       @id @default(cuid())
-  tenantId       String
-  mealItemId     String?
-  originalFoodId String
-  targetFoodId   String
-  swapStrategy   SwapStrategy
-  scope          SwapScope
-  matchScore     Int?
-  quantityBefore Float
-  quantityAfter  Float
-  performedBy    String
-  createdAt      DateTime     @default(now())
-
-  // Relations
-  tenant       Tenant      @relation(fields: [tenantId], references: [id])
-  user         User        @relation(fields: [performedBy], references: [id])
-  originalFood FoodLibrary @relation("OriginalFoodSwaps", fields: [originalFoodId], references: [id])
-  targetFood   FoodLibrary @relation("TargetFoodSwaps", fields: [targetFoodId], references: [id])
-
-  @@index([tenantId])
-  @@index([performedBy])
-  @@index([originalFoodId])
-  @@index([targetFoodId])
-  @@map("meal_swap_histories")
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// FILE ASSETS (STORAGE MODULE)
-// ─────────────────────────────────────────────────────────────────────────────
 
 enum StorageProvider {
   CLOUDINARY
@@ -1467,9 +1708,9 @@ enum FileEntityType {
   PROGRAM_CONTENT
   APPOINTMENT
   INVOICE
+  OTHER
   WHATSAPP_MESSAGE
   WHATSAPP
-  OTHER
 }
 
 enum FileVisibility {
@@ -1481,115 +1722,6 @@ enum FileVisibility {
 enum FileStatus {
   ACTIVE
   DELETED
-}
-
-model FileAsset {
-  id              String          @id @default(cuid())
-  tenantId        String
-  entityType      FileEntityType
-  entityId        String
-  folder          String
-  publicId        String
-  assetId         String? // Immutable asset ID (Cloudinary)
-  version         Int             @default(1)
-  isLatest        Boolean         @default(true)
-  storageProvider StorageProvider @default(CLOUDINARY)
-  resourceType    String
-  fileName        String
-  originalName    String
-  mimeType        String
-  extension       String
-  fileSize        Int
-  url             String
-  secureUrl       String
-  checksum        String?
-  uploadedBy      String
-  visibility      FileVisibility  @default(PRIVATE)
-  status          FileStatus      @default(ACTIVE)
-  metadata        Json?
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
-  deletedAt       DateTime?
-
-  tenant            Tenant           @relation(fields: [tenantId], references: [id])
-  user              User             @relation("FileUploader", fields: [uploadedBy], references: [id])
-  clientsAsAvatar   Client[]         @relation("ClientAvatar")
-  vaultDocument     VaultDocument?
-  whatsAppMessageId String?
-  whatsAppMessage   WhatsAppMessage? @relation(fields: [whatsAppMessageId], references: [id])
-
-  @@index([tenantId])
-  @@index([tenantId, entityType, entityId])
-  @@index([status])
-  @@index([visibility])
-  @@map("file_assets")
-}
-
-model VaultDocument {
-  id          String  @id @default(cuid())
-  tenantId    String
-  clientId    String
-  assetId     String  @unique
-  category    String // Enums: BLOODWORK, CONSENT_FORM, DIET_HISTORY, LIFESTYLE_FITNESS, GENERAL
-  description String? @db.VarChar(500)
-
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  deletedAt DateTime?
-
-  tenant     Tenant            @relation(fields: [tenantId], references: [id])
-  client     Client            @relation(fields: [clientId], references: [id])
-  asset      FileAsset         @relation(fields: [assetId], references: [id])
-  labResults ClientLabResult[]
-
-  @@index([tenantId, clientId, deletedAt])
-  @@map("vault_documents")
-}
-
-model WhatsAppConnection {
-  id String @id @default(cuid())
-
-  tenantId String @unique
-
-  status WhatsAppConnectionStatus @default(NOT_CONFIGURED)
-
-  provider       String? @default("WHATSAPP")
-  tokenType      String?
-  scope          String?
-  metaBusinessId String?
-
-  wabaId            String?
-  phoneNumberId     String?
-  businessAccountId String?
-
-  displayPhoneNumber String?
-  verifiedName       String?
-
-  accessToken  String?
-  refreshToken String?
-
-  tokenExpiresAt DateTime?
-
-  webhookVerified Boolean @default(false)
-
-  connectedAt DateTime?
-  lastSyncAt  DateTime?
-
-  lastValidatedAt            DateTime?
-  lastSuccessfulValidationAt DateTime?
-  lastError                  String?
-  lastErrorCode              String?
-  lastErrorAt                DateTime?
-  validationAttempts         Int       @default(0)
-  credentialFingerprint      String?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  tenant Tenant @relation(fields: [tenantId], references: [id])
-
-  @@index([tenantId])
-  @@map("whatsapp_connections")
 }
 
 enum WhatsAppSenderType {
@@ -1634,304 +1766,6 @@ enum WhatsAppMessageStatus {
   FAILED
 }
 
-model WhatsAppConversation {
-  id       String @id @default(cuid())
-  tenantId String
-  clientId String
-
-  optInStatus     Boolean   @default(false)
-  optInCapturedAt DateTime?
-
-  lastMessageId   String?
-  lastMessageText String?   @db.VarChar(500)
-  lastMessageAt   DateTime?
-  unreadCount     Int       @default(0)
-
-  isArchived Boolean @default(false)
-  isMuted    Boolean @default(false)
-
-  conversationStartedAt     DateTime?
-  lastInboundAt             DateTime?
-  lastOutboundAt            DateTime?
-  lastClientMessageAt       DateTime?
-  lastPractitionerMessageAt DateTime?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  tenant   Tenant            @relation(fields: [tenantId], references: [id])
-  client   Client            @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  messages WhatsAppMessage[]
-
-  @@unique([tenantId, clientId])
-  @@index([tenantId])
-  @@index([clientId])
-  @@map("whatsapp_conversations")
-}
-
-model WhatsAppMessage {
-  id             String  @id @default(cuid())
-  tenantId       String
-  conversationId String
-  metaMessageId  String? @unique
-
-  direction  WhatsAppMessageDirection
-  type       WhatsAppMessageType
-  status     WhatsAppMessageStatus    @default(QUEUED)
-  senderType WhatsAppSenderType
-  source     WhatsAppMessageSource    @default(MANUAL)
-
-  body             String? @db.Text
-  templateName     String?
-  templateLanguage String? @db.VarChar(10)
-
-  mediaMimeType String? @db.VarChar(100)
-  mediaSize     Int?
-
-  mediaUrl             String? @db.Text
-  mediaFileName        String? @db.VarChar(255)
-  mediaWidth           Int?
-  mediaHeight          Int?
-  mediaDurationSeconds Int?
-  storageFileId        String?
-  replyToMessageId     String?
-  replyToMetaMessageId String?
-  replyPreviewText     String? @db.Text
-  locationLatitude     Float?
-  locationLongitude    Float?
-  locationName         String? @db.VarChar(255)
-  locationAddress      String? @db.Text
-  contactName          String? @db.VarChar(255)
-  contactPhones        Json?
-  contactPayload       Json?
-  interactivePayload   Json?
-  previewText          String? @db.VarChar(500)
-
-  senderUserId    String?
-  senderRole      Role?
-  senderName      String? @db.VarChar(100)
-  senderPhone     String? @db.VarChar(30)
-  createdByUserId String?
-
-  errorText     String? @db.Text
-  lastErrorCode String? @db.VarChar(50)
-
-  sentAt      DateTime?
-  deliveredAt DateTime?
-  readAt      DateTime?
-  failedAt    DateTime?
-
-  deletedAt       DateTime?
-  deletedByUserId String?
-  deleteSource    String?   @db.VarChar(20)
-  deletedBy       String?   @db.VarChar(100)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  tenant       Tenant               @relation(fields: [tenantId], references: [id])
-  conversation WhatsAppConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  senderUser   User?                @relation(fields: [senderUserId], references: [id], onDelete: SetNull)
-  attachments  FileAsset[]
-  reactions    WhatsAppReaction[]
-
-  @@index([tenantId])
-  @@index([conversationId])
-  @@index([metaMessageId])
-  @@index([senderUserId])
-  @@index([createdAt])
-  @@map("whatsapp_messages")
-}
-
-model WhatsAppReaction {
-  id            String   @id @default(cuid())
-  tenantId      String
-  messageId     String
-  metaMessageId String?  @db.VarChar(100)
-  senderPhone   String   @db.VarChar(30)
-  senderName    String?  @db.VarChar(100)
-  emoji         String   @db.VarChar(50)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  message WhatsAppMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
-
-  @@unique([messageId, senderPhone])
-  @@index([tenantId])
-  @@index([messageId])
-  @@map("whatsapp_reactions")
-}
-
-model Notification {
-  id         String    @id @default(cuid())
-  tenantId   String
-  userId     String
-  type       String
-  title      String
-  message    String
-  entityType String?
-  entityId   String?
-  priority   String    @default("NORMAL")
-  actionUrl  String?
-  metadata   Json?
-  isRead     Boolean   @default(false)
-  readAt     DateTime?
-  isArchived Boolean   @default(false)
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
-
-  // Relations
-  tenant Tenant @relation(fields: [tenantId], references: [id])
-  user   User   @relation(fields: [userId], references: [id])
-
-  @@index([tenantId, userId])
-  @@index([tenantId, userId, isRead])
-  @@index([tenantId, userId, isArchived])
-  @@index([createdAt])
-  @@map("notifications")
-}
-
-model NotificationPreference {
-  id                   String   @id @default(cuid())
-  userId               String   @unique
-  browserNotifications Boolean  @default(true)
-  inAppNotifications   Boolean  @default(true)
-  soundNotifications   Boolean  @default(true)
-  soundVolume          Int      @default(80)
-  soundId              String   @default("message-default")
-  categories           Json? // Kept for backward compatibility migration
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId])
-  @@map("notification_preferences")
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// DIET PLAN AUTOMATION & REMINDER INFRASTRUCTURE
-// ─────────────────────────────────────────────────────────────────────────────
-
-model DietPlanAutomation {
-  id                 String           @id @default(cuid())
-  tenantId           String
-  clientId           String
-  dietPlanId         String
-  status             AutomationStatus @default(ACTIVE)
-  activatedAt        DateTime?
-  activatedBy        String?
-  startDate          DateTime?
-  stoppedAt          DateTime?
-  version            Int              @default(1)
-  waterEnabled       Boolean          @default(true)
-  waterFrequencyType String           @default("FREQUENCY") // "FREQUENCY" or "CUSTOM"
-  waterIntervalHours Int?             @default(2)
-  waterCustomTimes   Json? // e.g. ["08:00", "12:00", "16:00", "20:00"]
-  sleepEnabled       Boolean          @default(true)
-  sleepTime          String?          @default("22:00")
-  createdAt          DateTime         @default(now())
-  updatedAt          DateTime         @updatedAt
-
-  tenant           Tenant                  @relation(fields: [tenantId], references: [id])
-  client           Client                  @relation(fields: [clientId], references: [id])
-  dietPlan         DietPlan                @relation(fields: [dietPlanId], references: [id])
-  reminderJobs     ReminderJob[]
-  complianceEvents ClientComplianceEvent[]
-
-  @@index([tenantId])
-  @@index([tenantId, clientId])
-  @@index([tenantId, clientId, status])
-  @@index([tenantId, status])
-  @@map("diet_plan_automations")
-}
-
-model ReminderJob {
-  id                String            @id @default(cuid())
-  tenantId          String
-  clientId          String
-  automationId      String
-  dietPlanId        String
-  jobType           ReminderJobType
-  scheduledFor      DateTime
-  timezone          String
-  status            ReminderJobStatus @default(PENDING)
-  channel           ReminderChannel   @default(WHATSAPP)
-  templateId        String?
-  templateVersion   Int?
-  automationVersion Int               @default(1)
-  queueJobId        String?
-  compiledTitle     String?
-  compiledMessage   String?
-  payload           Json?
-  attempts          Int               @default(0)
-  executedAt        DateTime?
-  errorText         String?
-  sentMetaMessageId String?           @db.VarChar(100)
-  complianceEventId String?
-  isArchived        Boolean           @default(false)
-  createdAt         DateTime          @default(now())
-  updatedAt         DateTime          @updatedAt
-
-  tenant          Tenant                 @relation(fields: [tenantId], references: [id])
-  client          Client                 @relation(fields: [clientId], references: [id])
-  automation      DietPlanAutomation     @relation(fields: [automationId], references: [id], onDelete: Cascade)
-  dietPlan        DietPlan               @relation(fields: [dietPlanId], references: [id])
-  template        ReminderTemplate?      @relation(fields: [templateId], references: [id], onDelete: SetNull)
-  executions      ReminderExecution[]
-  complianceEvent ClientComplianceEvent?
-
-  @@index([tenantId])
-  @@index([tenantId, isArchived])
-  @@index([tenantId, clientId])
-  @@index([status, scheduledFor])
-  @@index([tenantId, status])
-  @@map("reminder_jobs")
-}
-
-model ReminderTemplate {
-  id              String               @id @default(cuid())
-  tenantId        String?
-  name            String
-  type            ReminderTemplateType
-  title           String
-  message         String               @db.Text
-  buttons         Json?
-  templateButtons Json?
-  buttonVersion   Int                  @default(1)
-  config          Json?
-  isDefault       Boolean              @default(false)
-  isActive        Boolean              @default(true)
-  version         Int                  @default(1)
-  createdAt DateTime             @default(now())
-  updatedAt DateTime             @updatedAt
-
-  tenant       Tenant?       @relation(fields: [tenantId], references: [id])
-  reminderJobs ReminderJob[]
-
-  @@index([tenantId])
-  @@map("reminder_templates")
-}
-
-model ReminderExecution {
-  id            String            @id @default(cuid())
-  tenantId      String
-  reminderJobId String
-  status        ReminderJobStatus
-  executedAt    DateTime
-  errorMessage  String?
-  metadata      Json?
-  metaMessageId String?           @db.VarChar(100)
-  createdAt     DateTime          @default(now())
-
-  tenant      Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  reminderJob ReminderJob @relation(fields: [reminderJobId], references: [id], onDelete: Cascade)
-
-  @@index([tenantId])
-  @@index([reminderJobId])
-  @@map("reminder_executions")
-}
-
 enum ReminderChannel {
   WHATSAPP
 }
@@ -1955,73 +1789,4 @@ enum ComplianceResponseType {
 enum ComplianceStatus {
   PENDING
   COMPLETED
-}
-
-model ClientComplianceEvent {
-  id                     String                 @id @default(cuid())
-  tenantId               String
-  clientId               String
-  automationId           String
-  reminderJobId          String                 @unique
-  templateId             String?
-  templateVersion        Int?
-  responseType           ComplianceResponseType @default(NO_RESPONSE)
-  responseRaw            String?                @db.Text
-  responseValue          Json?
-  responseLatencySeconds Int?
-  source                 String? // "BUTTON" | "TEXT" | "SYSTEM"
-  status                 ComplianceStatus       @default(PENDING)
-  metaMessageId          String?                @db.VarChar(100)
-  mealType               String?
-  mealName               String?
-  mealTime               String?
-  compiledTitle          String?                @db.Text
-  compiledMessage        String?                @db.Text
-  localDate              String // YYYY-MM-DD
-  scheduledFor           DateTime
-  respondedAt            DateTime?
-  responseWindowClosesAt DateTime
-  createdAt              DateTime               @default(now())
-  updatedAt              DateTime               @updatedAt
-
-  tenant      Tenant             @relation(fields: [tenantId], references: [id])
-  client      Client             @relation(fields: [clientId], references: [id])
-  automation  DietPlanAutomation @relation(fields: [automationId], references: [id], onDelete: Cascade)
-  reminderJob ReminderJob        @relation(fields: [reminderJobId], references: [id], onDelete: Cascade)
-
-  @@index([tenantId])
-  @@index([tenantId, clientId])
-  @@index([tenantId, clientId, createdAt])
-  @@index([status, responseWindowClosesAt])
-  @@map("client_compliance_events")
-}
-
-model ComplianceDailySummary {
-  id                       String   @id @default(cuid())
-  tenantId                 String
-  clientId                 String
-  date                     DateTime // UTC date at 00:00:00 (client's local date)
-  mealCompliancePercent    Float    @default(0)
-  waterCompliancePercent   Float    @default(0)
-  sleepCompliancePercent   Float    @default(0)
-  overallCompliancePercent Float    @default(0)
-  responseCount            Int      @default(0)
-  noResponseCount          Int      @default(0)
-  currentStreak            Int      @default(0)
-  longestStreak            Int      @default(0)
-  mealsCompleted           Int      @default(0)
-  mealsTotal               Int      @default(0)
-  waterCompleted           Int      @default(0)
-  waterTotal               Int      @default(0)
-  sleepCompleted           Int      @default(0)
-  sleepTotal               Int      @default(0)
-  createdAt                DateTime @default(now())
-  updatedAt                DateTime @updatedAt
-
-  tenant Tenant @relation(fields: [tenantId], references: [id])
-  client Client @relation(fields: [clientId], references: [id])
-
-  @@unique([tenantId, clientId, date])
-  @@index([tenantId, clientId])
-  @@map("compliance_daily_summaries")
 }

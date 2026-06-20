@@ -28,8 +28,20 @@ export const complianceService = {
     const localDate = format(zonedTime, 'yyyy-MM-dd', { timeZone: timezone });
 
     // Determine response window closes timestamp
-    const windowSeconds =
-      AUTOMATION_CONFIG.RESPONSE_WINDOWS[reminderJob.jobType] || 4 * 60 * 60;
+    const tenant = await db.tenant.findUnique({
+      where: { id: reminderJob.tenantId },
+      select: { reminderConfig: true },
+    });
+    const reminderConfig = tenant?.reminderConfig || {};
+
+    let windowSeconds = AUTOMATION_CONFIG.RESPONSE_WINDOWS[reminderJob.jobType] || 4 * 60 * 60;
+    if (reminderJob.jobType === 'SLEEP_REMINDER') {
+      const customSleepMinutes = reminderConfig.sleepResponseWindowMinutes;
+      if (customSleepMinutes !== undefined && customSleepMinutes !== null) {
+        windowSeconds = parseInt(customSleepMinutes, 10) * 60;
+      }
+    }
+
     const responseWindowClosesAt = new Date(
       reminderJob.scheduledFor.getTime() + windowSeconds * 1000
     );
@@ -160,12 +172,11 @@ export const complianceService = {
   async aggregateDailySummary(tenantId, clientId, localDateStr) {
     const targetDate = new Date(`${localDateStr}T00:00:00.000Z`);
 
-    // Get all events for the day (excluding archived jobs)
+    // Get all events for the day (including archived jobs)
     const events = await prisma.clientComplianceEvent.findMany({
       where: {
         clientId,
         localDate: localDateStr,
-        reminderJob: { isArchived: false },
       },
       include: {
         reminderJob: true,
@@ -463,13 +474,12 @@ export const complianceService = {
     const currentStreak = latestSummary?.currentStreak || 0;
     const longestStreak = latestSummary?.longestStreak || 0;
 
-    // Latency and Missed Meals need compliance events (excluding archived jobs)
+    // Latency and Missed Meals need compliance events
     const events = await prisma.clientComplianceEvent.findMany({
       where: {
         clientId,
         tenantId,
         createdAt: { gte: startDate },
-        reminderJob: { isArchived: false },
       },
     });
 
@@ -507,23 +517,40 @@ export const complianceService = {
     const totalNoResponses = events.filter((e) => e.responseType === 'NO_RESPONSE' && e.status === 'COMPLETED').length;
     const noResponseRate = totalJobsCount > 0 ? Math.round((totalNoResponses / totalJobsCount) * 100) : 0;
 
-    // Trend grouping: weekly trend
+    // Trend grouping: adjust granularity based on period parameter
     const weeklyTrends = [];
-    let tempSum = 0;
-    let tempCount = 0;
-    let weekIndex = 1;
-
-    for (let i = 0; i < summaries.length; i++) {
-      tempSum += summaries[i].overallCompliancePercent;
-      tempCount++;
-      if (tempCount === 7 || i === summaries.length - 1) {
+    if (period === '7d') {
+      for (const s of summaries) {
         weeklyTrends.push({
-          label: `Week ${weekIndex}`,
-          rate: Math.round(tempSum / tempCount),
+          label: format(s.date, 'MMM d'),
+          rate: Math.round(s.overallCompliancePercent),
         });
-        tempSum = 0;
-        tempCount = 0;
-        weekIndex++;
+      }
+    } else if (period === '30d') {
+      for (const s of summaries) {
+        weeklyTrends.push({
+          label: format(s.date, 'MM/dd'),
+          rate: Math.round(s.overallCompliancePercent),
+        });
+      }
+    } else {
+      // 90d: Group by week
+      let tempSum = 0;
+      let tempCount = 0;
+      let weekIndex = 1;
+
+      for (let i = 0; i < summaries.length; i++) {
+        tempSum += summaries[i].overallCompliancePercent;
+        tempCount++;
+        if (tempCount === 7 || i === summaries.length - 1) {
+          weeklyTrends.push({
+            label: `Week ${weekIndex}`,
+            rate: Math.round(tempSum / tempCount),
+          });
+          tempSum = 0;
+          tempCount = 0;
+          weekIndex++;
+        }
       }
     }
 
@@ -570,10 +597,9 @@ export const complianceService = {
     const where = {
       tenantId,
       clientId,
-      reminderJob: { isArchived: false },
     };
     if (jobType) {
-      where.reminderJob.jobType = jobType;
+      where.reminderJob = { jobType };
     }
     if (localDate) {
       where.localDate = localDate;

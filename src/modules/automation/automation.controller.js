@@ -117,7 +117,46 @@ export const automationController = {
 
     // Filters
     const where = { tenantId };
-    if (status) where.status = status;
+    if (status) {
+      if (status === 'SENT' || status === 'DELIVERED' || status === 'READ' || status === 'FAILED') {
+        if (status === 'FAILED') {
+          const failedMessages = await prisma.whatsAppMessage.findMany({
+            where: { tenantId, status: 'FAILED', direction: 'OUTBOUND', source: 'AUTOMATION' },
+            select: { metaMessageId: true },
+          });
+          const failedMetaIds = failedMessages.map((m) => m.metaMessageId).filter(Boolean);
+          where.OR = [
+            { status: 'FAILED' },
+            { status: 'SENT', sentMetaMessageId: { in: failedMetaIds } },
+          ];
+        } else {
+          where.status = 'SENT';
+          const targetStatuses = status === 'DELIVERED' ? ['DELIVERED', 'READ'] : [status];
+          const matchingMessages = await prisma.whatsAppMessage.findMany({
+            where: { tenantId, status: { in: targetStatuses }, direction: 'OUTBOUND', source: 'AUTOMATION' },
+            select: { metaMessageId: true },
+          });
+          const metaIds = matchingMessages.map((m) => m.metaMessageId).filter(Boolean);
+
+          if (status === 'SENT') {
+            const otherStatusMessages = await prisma.whatsAppMessage.findMany({
+              where: { tenantId, status: { in: ['DELIVERED', 'READ', 'FAILED'] }, direction: 'OUTBOUND', source: 'AUTOMATION' },
+              select: { metaMessageId: true },
+            });
+            const otherMetaIds = otherStatusMessages.map((m) => m.metaMessageId).filter(Boolean);
+            where.OR = [
+              { sentMetaMessageId: { in: metaIds } },
+              { sentMetaMessageId: { notIn: otherMetaIds } },
+              { sentMetaMessageId: null },
+            ];
+          } else {
+            where.sentMetaMessageId = { in: metaIds };
+          }
+        }
+      } else {
+        where.status = status;
+      }
+    }
     if (jobType) where.jobType = jobType;
     if (clientId) where.clientId = clientId;
     if (dietPlanId) where.dietPlanId = dietPlanId;
@@ -241,9 +280,36 @@ export const automationController = {
       logger.error(`[REMINDER_FAILURE] Failed to query BullMQ metrics: ${err.message}`);
     }
 
+    // Fetch actual WhatsApp delivery/read status for SENT jobs
+    const metaMessageIds = jobs
+      .filter((j) => j.status === 'SENT' && j.sentMetaMessageId)
+      .map((j) => j.sentMetaMessageId);
+    
+    let messageStatusMap = new Map();
+    if (metaMessageIds.length > 0) {
+      const messages = await prisma.whatsAppMessage.findMany({
+        where: {
+          tenantId,
+          metaMessageId: { in: metaMessageIds },
+        },
+        select: { metaMessageId: true, status: true },
+      });
+      messageStatusMap = new Map(messages.map((m) => [m.metaMessageId, m.status]));
+    }
+
+    const mappedJobs = jobs.map((job) => {
+      if (job.status === 'SENT' && job.sentMetaMessageId) {
+        const messageStatus = messageStatusMap.get(job.sentMetaMessageId);
+        if (messageStatus) {
+          return { ...job, status: messageStatus };
+        }
+      }
+      return job;
+    });
+
     res.status(HTTP_STATUS.OK).json({
       success: true,
-      data: jobs,
+      data: mappedJobs,
       pagination: {
         page: parsedPage,
         limit: parsedLimit,
@@ -276,9 +342,24 @@ export const automationController = {
       throw ApiError.notFound('Reminder Job not found');
     }
 
+    let displayStatus = job.status;
+    let errorMessage = job.errorText;
+    if (job.status === 'SENT' && job.sentMetaMessageId) {
+      const message = await prisma.whatsAppMessage.findUnique({
+        where: { metaMessageId: job.sentMetaMessageId },
+        select: { status: true, errorText: true },
+      });
+      if (message) {
+        displayStatus = message.status;
+        if (message.status === 'FAILED') {
+          errorMessage = message.errorText || 'Message delivery failed (Meta API callback)';
+        }
+      }
+    }
+
     res.status(HTTP_STATUS.OK).json({
       success: true,
-      data: job,
+      data: { ...job, status: displayStatus, errorText: errorMessage },
     });
   },
 
@@ -525,24 +606,84 @@ export const automationController = {
     try {
       // ── 1. Count jobs for current and previous windows ─────────────────
       const [
-        currScheduled, currSentOnly, currDeliveredOnly, currReadOnly, currFailed, currCancelled,
-        prevScheduled, prevSentOnly, prevDeliveredOnly, prevReadOnly, prevFailed,
+        currScheduled, currFailedDb, currCancelled,
+        prevScheduled, prevFailedDb,
       ] = await Promise.all([
         prisma.reminderJob.count({ where: { tenantId, scheduledFor: { gte: currentStart, lt: now }, isArchived: false } }),
-        prisma.whatsAppMessage.count({ where: { tenantId, createdAt: { gte: currentStart, lt: now }, source: 'AUTOMATION', direction: 'OUTBOUND', status: 'SENT' } }),
-        prisma.whatsAppMessage.count({ where: { tenantId, createdAt: { gte: currentStart, lt: now }, source: 'AUTOMATION', direction: 'OUTBOUND', status: 'DELIVERED' } }),
-        prisma.whatsAppMessage.count({ where: { tenantId, createdAt: { gte: currentStart, lt: now }, source: 'AUTOMATION', direction: 'OUTBOUND', status: 'READ' } }),
         prisma.reminderJob.count({ where: { tenantId, scheduledFor: { gte: currentStart, lt: now }, status: 'FAILED', isArchived: false } }),
         prisma.reminderJob.count({ where: { tenantId, scheduledFor: { gte: currentStart, lt: now }, status: 'CANCELLED', isArchived: false } }),
         prisma.reminderJob.count({ where: { tenantId, scheduledFor: { gte: previousStart, lt: currentStart }, isArchived: false } }),
-        prisma.whatsAppMessage.count({ where: { tenantId, createdAt: { gte: previousStart, lt: currentStart }, source: 'AUTOMATION', direction: 'OUTBOUND', status: 'SENT' } }),
-        prisma.whatsAppMessage.count({ where: { tenantId, createdAt: { gte: previousStart, lt: currentStart }, source: 'AUTOMATION', direction: 'OUTBOUND', status: 'DELIVERED' } }),
-        prisma.whatsAppMessage.count({ where: { tenantId, createdAt: { gte: previousStart, lt: currentStart }, source: 'AUTOMATION', direction: 'OUTBOUND', status: 'READ' } }),
         prisma.reminderJob.count({ where: { tenantId, scheduledFor: { gte: previousStart, lt: currentStart }, status: 'FAILED', isArchived: false } }),
       ]);
 
+      // Find metaMessageIds of active reminder jobs sent in current window
+      const currJobs = await prisma.reminderJob.findMany({
+        where: {
+          tenantId,
+          scheduledFor: { gte: currentStart, lt: now },
+          isArchived: false,
+          status: 'SENT',
+          sentMetaMessageId: { not: null },
+        },
+        select: { sentMetaMessageId: true },
+      });
+      const currMetaIds = currJobs.map((j) => j.sentMetaMessageId).filter(Boolean);
+
+      const currMessages = currMetaIds.length > 0 ? await prisma.whatsAppMessage.findMany({
+        where: {
+          tenantId,
+          metaMessageId: { in: currMetaIds },
+        },
+        select: { status: true },
+      }) : [];
+
+      let currSentOnly = 0;
+      let currDeliveredOnly = 0;
+      let currReadOnly = 0;
+      let currFailedMessages = 0;
+      for (const msg of currMessages) {
+        if (msg.status === 'SENT') currSentOnly++;
+        else if (msg.status === 'DELIVERED') currDeliveredOnly++;
+        else if (msg.status === 'READ') currReadOnly++;
+        else if (msg.status === 'FAILED') currFailedMessages++;
+      }
+
+      // Find metaMessageIds of active reminder jobs sent in previous window
+      const prevJobs = await prisma.reminderJob.findMany({
+        where: {
+          tenantId,
+          scheduledFor: { gte: previousStart, lt: currentStart },
+          isArchived: false,
+          status: 'SENT',
+          sentMetaMessageId: { not: null },
+        },
+        select: { sentMetaMessageId: true },
+      });
+      const prevMetaIds = prevJobs.map((j) => j.sentMetaMessageId).filter(Boolean);
+
+      const prevMessages = prevMetaIds.length > 0 ? await prisma.whatsAppMessage.findMany({
+        where: {
+          tenantId,
+          metaMessageId: { in: prevMetaIds },
+        },
+        select: { status: true },
+      }) : [];
+
+      let prevSentOnly = 0;
+      let prevDeliveredOnly = 0;
+      let prevReadOnly = 0;
+      let prevFailedMessages = 0;
+      for (const msg of prevMessages) {
+        if (msg.status === 'SENT') prevSentOnly++;
+        else if (msg.status === 'DELIVERED') prevDeliveredOnly++;
+        else if (msg.status === 'READ') prevReadOnly++;
+        else if (msg.status === 'FAILED') prevFailedMessages++;
+      }
+
       const currSent = currSentOnly + currDeliveredOnly + currReadOnly;
       const prevSent = prevSentOnly + prevDeliveredOnly + prevReadOnly;
+      const currFailed = currFailedDb + currFailedMessages;
+      const prevFailed = prevFailedDb + prevFailedMessages;
 
       // ── 2. Compliance events for current and previous windows ──────────
       const [currEvents, prevEvents] = await Promise.all([
@@ -692,9 +833,38 @@ export const automationController = {
         const sent = currEvents.filter(e => e.reminderJob?.jobType === jt).length; // proxy: 1 event per sent job
         const responded = typeEvents.filter(e => e.status === 'COMPLETED' && e.responseType !== 'NO_RESPONSE').length;
         const expired = typeEvents.filter(e => e.status === 'COMPLETED' && e.responseType === 'NO_RESPONSE').length;
-        const failed = await prisma.reminderJob.count({
+
+        // Query SENT jobs of this type whose message delivery failed
+        const typeJobs = await prisma.reminderJob.findMany({
+          where: {
+            tenantId,
+            jobType: jt,
+            scheduledFor: { gte: currentStart, lt: now },
+            isArchived: false,
+            status: 'SENT',
+            sentMetaMessageId: { not: null },
+          },
+          select: { sentMetaMessageId: true },
+        });
+        const typeMetaIds = typeJobs.map((j) => j.sentMetaMessageId).filter(Boolean);
+
+        const typeMessages = typeMetaIds.length > 0 ? await prisma.whatsAppMessage.findMany({
+          where: {
+            tenantId,
+            metaMessageId: { in: typeMetaIds },
+          },
+          select: { status: true },
+        }) : [];
+
+        let typeFailedMessages = 0;
+        for (const msg of typeMessages) {
+          if (msg.status === 'FAILED') typeFailedMessages++;
+        }
+
+        const failedDb = await prisma.reminderJob.count({
           where: { tenantId, jobType: jt, status: 'FAILED', scheduledFor: { gte: currentStart, lt: now }, isArchived: false },
         });
+        const failed = failedDb + typeFailedMessages;
 
         let typeLatency = 0;
         let typeLatencyCount = 0;
@@ -723,8 +893,33 @@ export const automationController = {
         take: 20,
       });
 
+      // Find SENT jobs whose message delivery failed
+      const failedSentJobs = await prisma.reminderJob.findMany({
+        where: {
+          tenantId,
+          status: 'SENT',
+          isArchived: false,
+          scheduledFor: { gte: currentStart },
+          sentMetaMessageId: { not: null },
+        },
+        include: { client: { select: { id: true, firstName: true, lastName: true } } },
+      });
+
+      const failedSentMetaIds = failedSentJobs.map((j) => j.sentMetaMessageId).filter(Boolean);
+      const failedMessages = failedSentMetaIds.length > 0 ? await prisma.whatsAppMessage.findMany({
+        where: { tenantId, status: 'FAILED', metaMessageId: { in: failedSentMetaIds } },
+        select: { metaMessageId: true },
+      }) : [];
+      const failedMetaSet = new Set(failedMessages.map((m) => m.metaMessageId));
+
+      const actualFailedJobs = [
+        ...failedJobs,
+        ...failedSentJobs.filter((j) => failedMetaSet.has(j.sentMetaMessageId)),
+      ].sort((a, b) => new Date(b.scheduledFor || b.createdAt).getTime() - new Date(a.scheduledFor || a.createdAt).getTime())
+       .slice(0, 20);
+
       const failedByClient = new Map();
-      for (const job of failedJobs) {
+      for (const job of actualFailedJobs) {
         const key = job.clientId;
         if (!failedByClient.has(key)) {
           failedByClient.set(key, { client: job.client, jobs: [], jobType: job.jobType, time: job.scheduledFor || job.createdAt });
