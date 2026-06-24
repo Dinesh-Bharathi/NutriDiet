@@ -9,7 +9,7 @@ import { getSummaryPages } from "./src/modules/pdf/templates/summary-template.js
 async function run() {
   try {
     const tenant = await prisma.tenant.findFirst({
-      where: { name: "FitLife Nutrition" }
+      where: { name: "NutriDiet" }
     });
 
     if (!tenant) {
@@ -32,7 +32,8 @@ async function run() {
     const compileContext = await import("./src/modules/pdf/diet-plan-document.builder.js")
       .then(m => m.dietPlanDocumentBuilder.buildContext(tenant.id, dietPlan.id, { mode: "DETAILED", includeSignature: true }));
 
-    const config = tenant.pdfTemplateConfig;
+    const { DEFAULT_PDF_TEMPLATE_CONFIG } = await import("./src/modules/pdf/pdf-template.defaults.js");
+    const config = tenant.pdfTemplateConfig || DEFAULT_PDF_TEMPLATE_CONFIG;
     const compiledHeader = compileContent(config.headerContent, compileContext);
     const compiledFooter = compileContent(config.footerContent, compileContext);
 

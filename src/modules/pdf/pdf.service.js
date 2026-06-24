@@ -14,6 +14,7 @@ import { getSummaryPages } from "./templates/summary-template.js";
 import { getDetailedPages } from "./templates/detailed-template.js";
 import { JSDOM } from "jsdom";
 import logger from "../../utils/logger.js";
+import { DEFAULT_PDF_TEMPLATE_CONFIG } from "./pdf-template.defaults.js";
 
 export const pdfService = {
   /**
@@ -50,14 +51,7 @@ export const pdfService = {
       throw new PdfError(404, "PDF_TEMPLATE_INVALID", "Tenant not found");
     }
 
-    const config = tenant.pdfTemplateConfig;
-    if (!config) {
-      throw new PdfError(
-        400,
-        "PDF_TEMPLATE_INVALID",
-        "PDF template configuration is not initialized for this tenant",
-      );
-    }
+    const config = tenant.pdfTemplateConfig || DEFAULT_PDF_TEMPLATE_CONFIG;
 
     // 2. Pre-flight Validation Pipeline
     this.validateTemplateConfig(config);
@@ -213,10 +207,10 @@ export const pdfService = {
       where: { id: tenantId },
       select: { pdfTemplateConfig: true },
     });
-    if (!tenant || !tenant.pdfTemplateConfig) {
-      throw new PdfError(400, "PDF_TEMPLATE_INVALID", "Tenant template config is missing");
+    if (!tenant) {
+      throw new PdfError(404, "PDF_TEMPLATE_INVALID", "Tenant not found");
     }
-    const config = tenant.pdfTemplateConfig;
+    const config = tenant.pdfTemplateConfig || DEFAULT_PDF_TEMPLATE_CONFIG;
 
     // 3. Compile layout headers and footers
     const compiledHeader = compileContent(config.headerContent, compileContext);

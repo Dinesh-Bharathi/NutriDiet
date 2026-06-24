@@ -2,6 +2,7 @@ import prisma from "../../lib/prisma.js";
 import PdfError from "./pdf-error.js";
 import { convertImageUrlToBase64 } from "./compiler/template-compiler.js";
 import logger from "../../utils/logger.js";
+import { DEFAULT_PDF_TEMPLATE_CONFIG } from "./pdf-template.defaults.js";
 import { calendarEngineService } from "../calendar-engine/calendar-engine.service.js";
 
 const kgToLbs = (kg) => {
@@ -144,7 +145,7 @@ export const dietPlanDocumentBuilder = {
       throw new PdfError(404, "TENANT_NOT_FOUND", "Tenant not found");
     }
 
-    const config = tenant.pdfTemplateConfig || {};
+    const config = tenant.pdfTemplateConfig || DEFAULT_PDF_TEMPLATE_CONFIG;
     const tenantLocale = tenant.locale || "en-US";
     const tenantTimezone = tenant.timezone || "UTC";
 

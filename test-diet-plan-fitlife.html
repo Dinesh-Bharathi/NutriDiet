@@ -1,0 +1,600 @@
+
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <title>High-Protein Muscle Gain Plan</title>
+      <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        
+        * {
+          box-sizing: border-box;
+        }
+
+        body {
+          margin: 0;
+          padding: 0;
+          font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+          background-color: #f1f5f9;
+          -webkit-print-color-adjust: exact;
+          print-color-adjust: exact;
+        }
+
+        .page {
+          background-color: #ffffff;
+          width: 210mm;
+          /* min-height allows content to push beyond one A4 sheet; Puppeteer
+             will break to a new print page automatically. Fixed height was
+             clipping all content beyond the first viewport. */
+          min-height: 297mm;
+          padding: 20mm;
+          position: relative;
+          overflow: visible;
+          display: flex;
+          flex-direction: column;
+          margin: 10px auto;
+          box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+          page-break-after: always;
+          break-after: page;
+        }
+
+        @media print {
+          body {
+            background-color: transparent;
+            margin: 0;
+            padding: 0;
+          }
+          .page {
+            margin: 0;
+            border: none;
+            box-shadow: none;
+            width: 210mm;
+            min-height: 297mm;
+            page-break-after: always;
+            break-after: page;
+          }
+          @page {
+            size: A4;
+            margin: 0;
+          }
+        }
+
+        /* Watermark styling */
+        .watermark {
+          pointer-events: none;
+          position: absolute;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          z-index: 0;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+        .watermark img {
+          max-width: 70%;
+          max-height: 70%;
+          object-fit: contain;
+        }
+
+        /* Header / Footer / Body layout styling */
+        .header-region {
+          padding-bottom: 16px;
+          z-index: 10;
+        }
+        
+        .body-region {
+          flex: 1;
+          /* overflow: visible is critical — hidden would silently clip any
+             guidance section content that extends past the header/footer space. */
+          overflow: visible;
+          margin-top: 16px;
+          z-index: 10;
+          font-size: 11px;
+          line-height: 1.6;
+          color: #1e293b;
+        }
+
+        .footer-region {
+          padding-top: 16px;
+          margin-top: 24px;
+          display: flex;
+          align-items: start;
+          justify-content: space-between;
+          font-size: 9px;
+          color: #64748b;
+          line-height: 1.5;
+          z-index: 10;
+        }
+
+        .footer-text {
+          flex: 1;
+          min-width: 0;
+          padding-right: 24px;
+        }
+
+        /* RichText & Preview Styles */
+        .pdf-preview-richtext p {
+          margin: 0 0 4px 0;
+        }
+        .pdf-preview-richtext p:last-child {
+          margin: 0;
+        }
+        .pdf-preview-richtext strong {
+          font-weight: 700;
+        }
+        .pdf-preview-richtext em {
+          font-style: italic;
+        }
+        .pdf-preview-richtext u {
+          text-decoration: underline;
+        }
+
+        .pdf-preview-body-content h2 {
+          font-size: 14px;
+          font-weight: 700;
+          color: #1447e6;
+          margin: 16px 0 8px 0;
+          border-bottom: 1px solid #f5f5f5;
+          padding-bottom: 4px;
+        }
+        .pdf-preview-body-content h2:first-child {
+          margin-top: 0;
+        }
+        .pdf-preview-body-content p {
+          margin: 0 0 8px 0;
+        }
+        .pdf-preview-body-content strong {
+          font-weight: 700;
+        }
+        .pdf-preview-body-content em {
+          font-style: italic;
+        }
+        .pdf-preview-body-content u {
+          text-decoration: underline;
+        }
+        .pdf-preview-body-content ul,
+        .pdf-preview-body-content ol {
+          margin: 0 0 12px 16px;
+          padding: 0;
+        }
+        .pdf-preview-body-content ul {
+          list-style-type: disc;
+        }
+        .pdf-preview-body-content ol {
+          list-style-type: decimal;
+        }
+        .pdf-preview-body-content li {
+          margin-bottom: 4px;
+        }
+        .pdf-preview-body-content table {
+          width: 100%;
+          border-collapse: collapse;
+          margin: 12px 0;
+        }
+        .pdf-preview-body-content th {
+          background-color: #1447e6;
+          color: white;
+          font-weight: 600;
+          text-align: left;
+          padding: 6px 8px;
+          font-size: 10px;
+        }
+        .pdf-preview-body-content td {
+          border-bottom: 1px solid #e2e8f0;
+          padding: 6px 8px;
+          font-size: 10px;
+        }
+        .pdf-preview-body-content tr:nth-child(even) td {
+          background-color: #ffffff;
+        }
+
+        /* Rich-text content rendering — ensures TipTap HTML output renders
+           correctly in PDF: paragraphs, headings, lists, inline marks, links */
+        .rich-text-content p {
+          margin: 0 0 6px 0;
+          line-height: 1.5;
+        }
+        .rich-text-content p:last-child {
+          margin-bottom: 0;
+        }
+        .rich-text-content h1 {
+          font-size: 14px;
+          font-weight: 700;
+          margin: 10px 0 6px 0;
+        }
+        .rich-text-content h2 {
+          font-size: 12px;
+          font-weight: 700;
+          margin: 8px 0 4px 0;
+        }
+        .rich-text-content h3 {
+          font-size: 11px;
+          font-weight: 600;
+          margin: 6px 0 4px 0;
+        }
+        .rich-text-content h4 {
+          font-size: 10px;
+          font-weight: 600;
+          margin: 4px 0 2px 0;
+        }
+        .rich-text-content strong {
+          font-weight: 700;
+        }
+        .rich-text-content em {
+          font-style: italic;
+        }
+        .rich-text-content u {
+          text-decoration: underline;
+        }
+        .rich-text-content ul {
+          margin: 4px 0 6px 16px;
+          padding: 0;
+          list-style-type: disc;
+        }
+        .rich-text-content ol {
+          margin: 4px 0 6px 16px;
+          padding: 0;
+          list-style-type: decimal;
+        }
+        .rich-text-content li {
+          margin-bottom: 3px;
+          line-height: 1.5;
+        }
+        .rich-text-content a {
+          color: inherit;
+          text-decoration: underline;
+        }
+        .rich-text-content blockquote {
+          border-left: 3px solid #cbd5e1;
+          margin: 6px 0;
+          padding-left: 10px;
+          color: #64748b;
+          font-style: italic;
+        }
+
+        /* Prevent a guidance section from being split mid-element */
+        .guidance-section {
+          break-inside: avoid;
+          page-break-inside: avoid;
+        }
+      </style>
+    </head>
+    <body>
+      
+        <div class="page">
+          <!-- Watermark Layer -->
+          
+
+          <!-- Header Region -->
+          <div class="header-region">
+            <div class="pdf-preview-richtext">
+              <p style="text-align: left"><strong>NutriDiet</strong></p><p style="text-align: left">India</p><p style="text-align: left">  ·  nutriowner@putsbox.com</p>
+            </div>
+          </div>
+
+          <!-- Body Region -->
+          <div class="body-region pdf-preview-body-content">
+            <div style="margin-bottom: 20px; padding-bottom: 12px; border-bottom: 2px solid #1447e6">
+      <h1 style="margin: 0 0 4px 0; font-size: 20px; color: #1447e6; font-weight: 700; text-transform: uppercase">
+        High-Protein Muscle Gain Plan
+      </h1>
+      <p style="margin: 0; font-size: 11px; color: #64748b; font-style: italic">
+        A meal plan template designed for individuals looking to build lean muscle mass with high-quality protein and balanced carbs and fats.
+      </p>
+    </div>
+  
+      <div style="margin-bottom: 20px">
+        <h2 style="font-size: 13px; font-weight: 700; color: #1447e6; margin: 0 0 10px 0; border-bottom: 1px solid #cbd5e1; padding-bottom: 4px; text-transform: uppercase">
+          Daily Macro Nutrient Targets
+        </h2>
+        <div style="border: 1px solid #e2e8f0; border-radius: 8px; background: #ffffff; padding: 12px; display: flex; align-items: center; justify-content: space-between">
+          <!-- Calories -->
+          <div style="flex: 1; text-align: center; border-right: 1px solid #e2e8f0; padding: 4px 0">
+            <div style="font-size: 8px; text-transform: uppercase; color: #64748b; font-weight: 600; letter-spacing: 0.5px">Calories</div>
+            <div style="font-size: 14px; font-weight: 700; color: #1447e6; margin: 2px 0">2000 kcal</div>
+            <div style="font-size: 8px; color: #94a3b8">Planned: 2027 kcal</div>
+          </div>
+          <!-- Protein -->
+          <div style="flex: 1; text-align: center; border-right: 1px solid #e2e8f0; padding: 4px 0">
+            <div style="font-size: 8px; text-transform: uppercase; color: #64748b; font-weight: 600; letter-spacing: 0.5px">Protein</div>
+            <div style="font-size: 14px; font-weight: 700; color: #0284c7; margin: 2px 0">170g</div>
+            <div style="font-size: 8px; color: #94a3b8">Planned: 169.27g</div>
+          </div>
+          <!-- Carbs -->
+          <div style="flex: 1; text-align: center; border-right: 1px solid #e2e8f0; padding: 4px 0">
+            <div style="font-size: 8px; text-transform: uppercase; color: #64748b; font-weight: 600; letter-spacing: 0.5px">Carbohydrates</div>
+            <div style="font-size: 14px; font-weight: 700; color: #ea580c; margin: 2px 0">175g</div>
+            <div style="font-size: 8px; color: #94a3b8">Planned: 172.29g</div>
+          </div>
+          <!-- Fat -->
+          <div style="flex: 1; text-align: center; padding: 4px 0">
+            <div style="font-size: 8px; text-transform: uppercase; color: #64748b; font-weight: 600; letter-spacing: 0.5px">Fat</div>
+            <div style="font-size: 14px; font-weight: 700; color: #16a34a; margin: 2px 0">73g</div>
+            <div style="font-size: 8px; color: #94a3b8">Planned: 72.97g</div>
+          </div>
+        </div>
+      </div>
+    
+          </div>
+
+          <!-- Footer Region -->
+          
+            <div class="footer-region">
+              <div class="footer-text pdf-preview-richtext" style="width: 100%;">
+                <p style="text-align: left">Dinesh Owner</p><p style="text-align: left">
+</p><div class="signature-block" style="margin-top: 8px; page-break-inside: avoid">
+  <div style="border-bottom: 1px solid #000; width: 200px; height: 24px"></div>
+</div><p></p><p style="text-align: left">24 June 2026 at 02:21 pm</p><p style="text-align: left">Page 1 of 2</p>
+              </div>
+            </div>
+            
+        </div>
+      
+
+        <div class="page">
+          <!-- Watermark Layer -->
+          
+
+          <!-- Header Region -->
+          <div class="header-region">
+            <div class="pdf-preview-richtext">
+              <p style="text-align: left"><strong>NutriDiet</strong></p><p style="text-align: left">India</p><p style="text-align: left">  ·  nutriowner@putsbox.com</p>
+            </div>
+          </div>
+
+          <!-- Body Region -->
+          <div class="body-region pdf-preview-body-content">
+            <div style="margin-bottom: 16px; padding-bottom: 8px; border-bottom: 2px solid #1447e6">
+        <h2 style="margin: 0; font-size: 14px; font-weight: 700; color: #1447e6; border-bottom: none; padding-bottom: 0; text-transform: uppercase">
+          Plan Meal Schedule
+        </h2>
+      </div>
+    
+        <div style="margin-bottom: 16px; page-break-inside: avoid">
+          <h3 style="font-size: 11px; font-weight: 700; color: #0f172a; margin: 0 0 6px 0; text-transform: uppercase; background: #f8fafc; padding: 4px 6px; border-left: 3px solid #1447e6">
+            MID MORNING (11:00)
+          </h3>
+      <p style="font-size: 9px; color: #64748b; margin: 0 0 6px 0; font-style: italic">Note: Focus on complex carbs and protein.</p>
+          <table style="width: 100%; border-collapse: collapse; font-size: 9px; margin-bottom: 8px">
+            <thead>
+              <tr style="background-color: #1447e6; color: white; text-align: left">
+                <th style="padding: 4px 6px; width: 45%">Food / Ingredient</th>
+                <th style="padding: 4px 6px; text-align: center; width: 15%">Quantity</th>
+                <th style="padding: 4px 6px; text-align: center; width: 10%">Calories</th>
+                <th style="padding: 4px 6px; text-align: center; width: 10%">Protein</th>
+                <th style="padding: 4px 6px; text-align: center; width: 10%">Carbs</th>
+                <th style="padding: 4px 6px; text-align: center; width: 10%">Fat</th>
+              </tr>
+            </thead>
+            <tbody>
+        
+            <tr style="background: #ffffff; border-bottom: 1px solid #e2e8f0">
+              <td style="padding: 4px 6px; font-weight: bold; color: #1e293b">
+                Rolled Oats
+                <div style="font-size: 8px; color: #64748b; font-weight: normal; margin-top: 2px">Note: Cook in water or low-fat milk.</div>
+              </td>
+              <td style="padding: 4px 6px; text-align: center">80 g</td>
+              <td style="padding: 4px 6px; text-align: center">311.2 kcal</td>
+              <td style="padding: 4px 6px; text-align: center">13.52g</td>
+              <td style="padding: 4px 6px; text-align: center">53.04g</td>
+              <td style="padding: 4px 6px; text-align: center">5.52g</td>
+            </tr>
+          
+            <tr style="background: #ffffff; border-bottom: 1px solid #e2e8f0">
+              <td style="padding: 4px 6px; font-weight: bold; color: #1e293b">
+                Whole Egg
+                <div style="font-size: 8px; color: #64748b; font-weight: normal; margin-top: 2px">Note: Scrambled or boiled.</div>
+              </td>
+              <td style="padding: 4px 6px; text-align: center">3 piece</td>
+              <td style="padding: 4px 6px; text-align: center">234 kcal</td>
+              <td style="padding: 4px 6px; text-align: center">18.9g</td>
+              <td style="padding: 4px 6px; text-align: center">1.8g</td>
+              <td style="padding: 4px 6px; text-align: center">15.9g</td>
+            </tr>
+          
+            <tr style="background: #ffffff; border-bottom: 1px solid #e2e8f0">
+              <td style="padding: 4px 6px; font-weight: bold; color: #1e293b">
+                Banana
+                <div style="font-size: 8px; color: #64748b; font-weight: normal; margin-top: 2px">Note: Slice on oats or eat separately.</div>
+              </td>
+              <td style="padding: 4px 6px; text-align: center">1 piece</td>
+              <td style="padding: 4px 6px; text-align: center">105 kcal</td>
+              <td style="padding: 4px 6px; text-align: center">1.3g</td>
+              <td style="padding: 4px 6px; text-align: center">27g</td>
+              <td style="padding: 4px 6px; text-align: center">0.3g</td>
+            </tr>
+          
+            </tbody>
+          </table>
+        </div>
+        <div style="margin-bottom: 16px; page-break-inside: avoid">
+          <h3 style="font-size: 11px; font-weight: 700; color: #0f172a; margin: 0 0 6px 0; text-transform: uppercase; background: #f8fafc; padding: 4px 6px; border-left: 3px solid #1447e6">
+            LUNCH (13:00)
+          </h3>
+      <p style="font-size: 9px; color: #64748b; margin: 0 0 6px 0; font-style: italic">Note: Balanced meal with lean protein, complex carbs, and healthy fats.</p>
+          <table style="width: 100%; border-collapse: collapse; font-size: 9px; margin-bottom: 8px">
+            <thead>
+              <tr style="background-color: #1447e6; color: white; text-align: left">
+                <th style="padding: 4px 6px; width: 45%">Food / Ingredient</th>
+                <th style="padding: 4px 6px; text-align: center; width: 15%">Quantity</th>
+                <th style="padding: 4px 6px; text-align: center; width: 10%">Calories</th>
+                <th style="padding: 4px 6px; text-align: center; width: 10%">Protein</th>
+                <th style="padding: 4px 6px; text-align: center; width: 10%">Carbs</th>
+                <th style="padding: 4px 6px; text-align: center; width: 10%">Fat</th>
+              </tr>
+            </thead>
+            <tbody>
+        
+            <tr style="background: #ffffff; border-bottom: 1px solid #e2e8f0">
+              <td style="padding: 4px 6px; font-weight: bold; color: #1e293b">
+                Chicken Breast
+                <div style="font-size: 8px; color: #64748b; font-weight: normal; margin-top: 2px">Note: Grilled or baked with spices.</div>
+              </td>
+              <td style="padding: 4px 6px; text-align: center">200 g</td>
+              <td style="padding: 4px 6px; text-align: center">330 kcal</td>
+              <td style="padding: 4px 6px; text-align: center">62g</td>
+              <td style="padding: 4px 6px; text-align: center">0g</td>
+              <td style="padding: 4px 6px; text-align: center">7.2g</td>
+            </tr>
+          
+            <tr style="background: #ffffff; border-bottom: 1px solid #e2e8f0">
+              <td style="padding: 4px 6px; font-weight: bold; color: #1e293b">
+                White Rice
+                <div style="font-size: 8px; color: #64748b; font-weight: normal; margin-top: 2px">Note: Steamed.</div>
+              </td>
+              <td style="padding: 4px 6px; text-align: center">150 g</td>
+              <td style="padding: 4px 6px; text-align: center">195 kcal</td>
+              <td style="padding: 4px 6px; text-align: center">4.05g</td>
+              <td style="padding: 4px 6px; text-align: center">42g</td>
+              <td style="padding: 4px 6px; text-align: center">0.45g</td>
+            </tr>
+          
+            <tr style="background: #ffffff; border-bottom: 1px solid #e2e8f0">
+              <td style="padding: 4px 6px; font-weight: bold; color: #1e293b">
+                Spinach
+                <div style="font-size: 8px; color: #64748b; font-weight: normal; margin-top: 2px">Note: Steamed or sautéed.</div>
+              </td>
+              <td style="padding: 4px 6px; text-align: center">100 g</td>
+              <td style="padding: 4px 6px; text-align: center">23 kcal</td>
+              <td style="padding: 4px 6px; text-align: center">2.9g</td>
+              <td style="padding: 4px 6px; text-align: center">3.6g</td>
+              <td style="padding: 4px 6px; text-align: center">0.4g</td>
+            </tr>
+          
+            <tr style="background: #ffffff; border-bottom: 1px solid #e2e8f0">
+              <td style="padding: 4px 6px; font-weight: bold; color: #1e293b">
+                Avocado
+                <div style="font-size: 8px; color: #64748b; font-weight: normal; margin-top: 2px">Note: Fresh.</div>
+              </td>
+              <td style="padding: 4px 6px; text-align: center">0.5 piece</td>
+              <td style="padding: 4px 6px; text-align: center">80 kcal</td>
+              <td style="padding: 4px 6px; text-align: center">1g</td>
+              <td style="padding: 4px 6px; text-align: center">4.25g</td>
+              <td style="padding: 4px 6px; text-align: center">7.5g</td>
+            </tr>
+          
+            </tbody>
+          </table>
+        </div>
+        <div style="margin-bottom: 16px; page-break-inside: avoid">
+          <h3 style="font-size: 11px; font-weight: 700; color: #0f172a; margin: 0 0 6px 0; text-transform: uppercase; background: #f8fafc; padding: 4px 6px; border-left: 3px solid #1447e6">
+            EVENING SNACK (17:00)
+          </h3>
+      <p style="font-size: 9px; color: #64748b; margin: 0 0 6px 0; font-style: italic">Note: Quick protein boost.</p>
+          <table style="width: 100%; border-collapse: collapse; font-size: 9px; margin-bottom: 8px">
+            <thead>
+              <tr style="background-color: #1447e6; color: white; text-align: left">
+                <th style="padding: 4px 6px; width: 45%">Food / Ingredient</th>
+                <th style="padding: 4px 6px; text-align: center; width: 15%">Quantity</th>
+                <th style="padding: 4px 6px; text-align: center; width: 10%">Calories</th>
+                <th style="padding: 4px 6px; text-align: center; width: 10%">Protein</th>
+                <th style="padding: 4px 6px; text-align: center; width: 10%">Carbs</th>
+                <th style="padding: 4px 6px; text-align: center; width: 10%">Fat</th>
+              </tr>
+            </thead>
+            <tbody>
+        
+            <tr style="background: #ffffff; border-bottom: 1px solid #e2e8f0">
+              <td style="padding: 4px 6px; font-weight: bold; color: #1e293b">
+                Whey Protein
+                <div style="font-size: 8px; color: #64748b; font-weight: normal; margin-top: 2px">Note: Mix with cold water.</div>
+              </td>
+              <td style="padding: 4px 6px; text-align: center">1 scoop</td>
+              <td style="padding: 4px 6px; text-align: center">120 kcal</td>
+              <td style="padding: 4px 6px; text-align: center">24g</td>
+              <td style="padding: 4px 6px; text-align: center">3g</td>
+              <td style="padding: 4px 6px; text-align: center">1.5g</td>
+            </tr>
+          
+            <tr style="background: #ffffff; border-bottom: 1px solid #e2e8f0">
+              <td style="padding: 4px 6px; font-weight: bold; color: #1e293b">
+                Almonds
+                <div style="font-size: 8px; color: #64748b; font-weight: normal; margin-top: 2px">Note: Raw almonds.</div>
+              </td>
+              <td style="padding: 4px 6px; text-align: center">1 oz</td>
+              <td style="padding: 4px 6px; text-align: center">164 kcal</td>
+              <td style="padding: 4px 6px; text-align: center">6g</td>
+              <td style="padding: 4px 6px; text-align: center">6g</td>
+              <td style="padding: 4px 6px; text-align: center">14g</td>
+            </tr>
+          
+            </tbody>
+          </table>
+        </div>
+        <div style="margin-bottom: 16px; page-break-inside: avoid">
+          <h3 style="font-size: 11px; font-weight: 700; color: #0f172a; margin: 0 0 6px 0; text-transform: uppercase; background: #f8fafc; padding: 4px 6px; border-left: 3px solid #1447e6">
+            DINNER (20:00)
+          </h3>
+      <p style="font-size: 9px; color: #64748b; margin: 0 0 6px 0; font-style: italic">Note: Lean protein and healthy fats for sustained overnight recovery.</p>
+          <table style="width: 100%; border-collapse: collapse; font-size: 9px; margin-bottom: 8px">
+            <thead>
+              <tr style="background-color: #1447e6; color: white; text-align: left">
+                <th style="padding: 4px 6px; width: 45%">Food / Ingredient</th>
+                <th style="padding: 4px 6px; text-align: center; width: 15%">Quantity</th>
+                <th style="padding: 4px 6px; text-align: center; width: 10%">Calories</th>
+                <th style="padding: 4px 6px; text-align: center; width: 10%">Protein</th>
+                <th style="padding: 4px 6px; text-align: center; width: 10%">Carbs</th>
+                <th style="padding: 4px 6px; text-align: center; width: 10%">Fat</th>
+              </tr>
+            </thead>
+            <tbody>
+        
+            <tr style="background: #ffffff; border-bottom: 1px solid #e2e8f0">
+              <td style="padding: 4px 6px; font-weight: bold; color: #1e293b">
+                Salmon Fillet
+                <div style="font-size: 8px; color: #64748b; font-weight: normal; margin-top: 2px">Note: Pan-seared.</div>
+              </td>
+              <td style="padding: 4px 6px; text-align: center">150 g</td>
+              <td style="padding: 4px 6px; text-align: center">312 kcal</td>
+              <td style="padding: 4px 6px; text-align: center">30g</td>
+              <td style="padding: 4px 6px; text-align: center">0g</td>
+              <td style="padding: 4px 6px; text-align: center">19.5g</td>
+            </tr>
+          
+            <tr style="background: #ffffff; border-bottom: 1px solid #e2e8f0">
+              <td style="padding: 4px 6px; font-weight: bold; color: #1e293b">
+                White Rice
+                <div style="font-size: 8px; color: #64748b; font-weight: normal; margin-top: 2px">Note: Steamed.</div>
+              </td>
+              <td style="padding: 4px 6px; text-align: center">100 g</td>
+              <td style="padding: 4px 6px; text-align: center">130 kcal</td>
+              <td style="padding: 4px 6px; text-align: center">2.7g</td>
+              <td style="padding: 4px 6px; text-align: center">28g</td>
+              <td style="padding: 4px 6px; text-align: center">0.3g</td>
+            </tr>
+          
+            <tr style="background: #ffffff; border-bottom: 1px solid #e2e8f0">
+              <td style="padding: 4px 6px; font-weight: bold; color: #1e293b">
+                Spinach
+                <div style="font-size: 8px; color: #64748b; font-weight: normal; margin-top: 2px">Note: Steamed.</div>
+              </td>
+              <td style="padding: 4px 6px; text-align: center">100 g</td>
+              <td style="padding: 4px 6px; text-align: center">23 kcal</td>
+              <td style="padding: 4px 6px; text-align: center">2.9g</td>
+              <td style="padding: 4px 6px; text-align: center">3.6g</td>
+              <td style="padding: 4px 6px; text-align: center">0.4g</td>
+            </tr>
+          
+            </tbody>
+          </table>
+        </div>
+          </div>
+
+          <!-- Footer Region -->
+          
+            <div class="footer-region">
+              <div class="footer-text pdf-preview-richtext" style="width: 100%;">
+                <p style="text-align: left">Dinesh Owner</p><p style="text-align: left">
+</p><div class="signature-block" style="margin-top: 8px; page-break-inside: avoid">
+  <div style="border-bottom: 1px solid #000; width: 200px; height: 24px"></div>
+</div><p></p><p style="text-align: left">24 June 2026 at 02:21 pm</p><p style="text-align: left">Page 2 of 2</p>
+              </div>
+            </div>
+            
+        </div>
+      
+    </body>
+    </html>
+  
