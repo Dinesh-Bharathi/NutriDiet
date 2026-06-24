@@ -853,7 +853,20 @@ export const automationController = {
 
       for (const jt of jobTypes) {
         const typeEvents = currEvents.filter(e => e.reminderJob?.jobType === jt);
-        const sent = currEvents.filter(e => e.reminderJob?.jobType === jt).length; // proxy: 1 event per sent job
+        
+        // Use actual reminderJob count for behavioral reminders, compliance events for follow-ups
+        const isCompliance = ['MEAL_FOLLOWUP', 'WATER_FOLLOWUP', 'SLEEP_FOLLOWUP'].includes(jt);
+        const sent = isCompliance
+          ? typeEvents.length
+          : await prisma.reminderJob.count({
+              where: {
+                tenantId,
+                jobType: jt,
+                scheduledFor: { gte: currentStart, lt: now },
+                isArchived: false,
+                status: 'SENT',
+              },
+            });
         const responded = typeEvents.filter(e => e.status === 'COMPLETED' && e.responseType !== 'NO_RESPONSE').length;
         const expired = typeEvents.filter(e => e.status === 'COMPLETED' && e.responseType === 'NO_RESPONSE').length;
 
