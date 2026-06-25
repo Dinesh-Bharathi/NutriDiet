@@ -221,16 +221,23 @@ async function run() {
     }
 
     // Wait for the asynchronous InvoicePaid event listener to process subscription auto-activation
-    console.log("   Waiting 1s for asynchronous subscription auto-activation...");
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+    console.log("   Waiting for asynchronous subscription auto-activation...");
+    let subStatus = '';
+    for (let attempt = 1; attempt <= 6; attempt++) {
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      const subRes = await fetch(`${billingBaseUrl}/subscription`, {
+        headers: { 'Authorization': `Bearer ${ownerToken}` },
+      });
+      const subBody = await subRes.json();
+      subStatus = subBody.data?.status;
+      if (subStatus === 'active') {
+        break;
+      }
+      console.log(`   [Attempt ${attempt}/6] Subscription status is currently: ${subStatus}...`);
+    }
 
-    // Check subscription is active now in service state (since payInvoice maps it)
-    const subRes = await fetch(`${billingBaseUrl}/subscription`, {
-      headers: { 'Authorization': `Bearer ${ownerToken}` },
-    });
-    const subBody = await subRes.json();
-    if (subBody.data.status !== 'active') {
-      console.error(`❌ Failure: Subscription status is ${subBody.data.status} (expected active)`);
+    if (subStatus !== 'active') {
+      console.error(`❌ Failure: Subscription status is ${subStatus} (expected active)`);
       failed = true;
     } else {
       console.log("✅ Subscription successfully transitioned to active in database.");

@@ -101,6 +101,11 @@ const env = Object.freeze({
   ),
   R2_PUBLIC_URL: require_env("R2_PUBLIC_URL", "https://pub-mock.r2.dev"),
 
+  // Razorpay ─────────────────────────────────────────────────────────────
+  RAZORPAY_KEY_ID: process.env.RAZORPAY_KEY_ID || "rzp_test_mockkeyid123",
+  RAZORPAY_KEY_SECRET: process.env.RAZORPAY_KEY_SECRET || "mockkeysecret456",
+  RAZORPAY_WEBHOOK_SECRET: process.env.RAZORPAY_WEBHOOK_SECRET || "mockwebhooksecret789",
+
   // Derived helpers ───────────────────────────────────────────────────────
   get IS_PRODUCTION() {
     return this.NODE_ENV === "production";

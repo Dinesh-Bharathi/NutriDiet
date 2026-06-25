@@ -7,6 +7,7 @@ import { subscriptionRepository } from './repositories/subscription.repository.j
 import { paymentRepository } from './repositories/payment.repository.js';
 import { paymentService } from './payment.service.js';
 import { subscriptionService } from './subscription.service.js';
+import { razorpayService } from './razorpay.service.js';
 import { billingEventBus } from './billing.event-bus.js';
 import { BillingBusinessError } from './billing.errors.js';
 import logger from '../../config/logger.js';
@@ -21,9 +22,7 @@ export const webhookService = {
    * @returns {boolean}
    */
   verifySignature(rawBody, signature, secret) {
-    if (!signature || !secret) return false;
-    // In future phases, Razorpay/Stripe crypto verification happens here.
-    return true;
+    return razorpayService.verifyWebhookSignature(rawBody, signature, secret);
   },
 
   /**
@@ -125,7 +124,6 @@ export const webhookService = {
     // Settle the payment
     await paymentService.verifyAndRecordPayment(tenantId, payment.id, {
       gatewayPaymentId,
-      gatewaySignature,
     });
   },
 

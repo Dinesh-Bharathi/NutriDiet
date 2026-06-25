@@ -36,12 +36,31 @@ export const getInvoiceByIdSchema = z.object({
   }),
 });
 
-// Validation schema for payment capture simulation
+// Validation schema for payment capture simulation and verification
 export const payInvoiceSchema = z.object({
   params: z.object({
     id: z.string().min(1, 'Invoice ID is required'),
   }),
   body: z.object({
     paymentId: z.string().optional(),
+    gatewayPaymentId: z.string().optional(),
+    gatewaySignature: z.string().optional(),
   }),
 });
+
+// Validation schema for generating Razorpay Order for checkout
+export const checkoutInvoiceSchema = z.object({
+  params: z.object({
+    id: z.string().min(1, 'Invoice ID is required'),
+  }),
+});
+
+// Validation schema for starting/paying a subscription
+export const checkoutSubscriptionSchema = z.object({
+  body: z.object({
+    planCode: z.string().min(1, 'planCode is required'),
+    billingCycle: z.enum(['MONTHLY', 'YEARLY']),
+  }),
+});
+
+

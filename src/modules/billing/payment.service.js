@@ -4,6 +4,9 @@
 import prisma from '../../lib/prisma.js';
 import { paymentRepository } from './repositories/payment.repository.js';
 import { invoiceService } from './invoice.service.js';
+import { razorpayService } from './razorpay.service.js';
+import env from '../../config/env.js';
+import crypto from 'crypto';
 import { billingEventBus } from './billing.event-bus.js';
 import { PaymentNotFoundError, BillingBusinessError } from './billing.errors.js';
 
@@ -58,6 +61,17 @@ export const paymentService = {
       // Idempotency Guard: if already SUCCESSFUL, return immediately
       if (payment.status === 'SUCCESSFUL') {
         return payment;
+      }
+
+      // Cryptographic verification of payment signature
+      if (!razorpayService.isMock() && gatewayDetails.gatewaySignature && payment.gatewayOrderId) {
+        const generatedSignature = crypto
+          .createHmac('sha256', env.RAZORPAY_KEY_SECRET)
+          .update(`${payment.gatewayOrderId}|${gatewayDetails.gatewayPaymentId}`)
+          .digest('hex');
+        if (generatedSignature !== gatewayDetails.gatewaySignature) {
+          throw new BillingBusinessError('Invalid payment signature verification failed');
+        }
       }
 
       // Update payment record status

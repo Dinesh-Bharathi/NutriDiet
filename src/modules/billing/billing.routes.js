@@ -13,6 +13,8 @@ import {
   listInvoicesSchema,
   getInvoiceByIdSchema,
   payInvoiceSchema,
+  checkoutInvoiceSchema,
+  checkoutSubscriptionSchema,
 } from './billing.validation.js';
 
 const router = Router();
@@ -42,6 +44,16 @@ router.post(
   adminOrAbove,
   validate(startTrialSchema),
   billingController.startTrial
+);
+
+// Initiate checkout order for a subscription upgrade/purchase (OWNER / ADMIN only)
+router.post(
+  '/subscription/checkout',
+  authenticate,
+  resolveTenant,
+  adminOrAbove,
+  validate(checkoutSubscriptionSchema),
+  billingController.checkoutSubscription
 );
 
 // Cancel active subscription (OWNER / ADMIN only)
@@ -74,7 +86,7 @@ router.get(
   billingController.getInvoiceById
 );
 
-// Settle simulated payment capture (OWNER / ADMIN only)
+// Settle simulated payment capture or verify signature (OWNER / ADMIN only)
 router.post(
   '/invoices/:id/pay',
   authenticate,
@@ -82,6 +94,22 @@ router.post(
   adminOrAbove,
   validate(payInvoiceSchema),
   billingController.payInvoice
+);
+
+// Initiate Razorpay checkout order for an invoice (OWNER / ADMIN only)
+router.post(
+  '/invoices/:id/checkout',
+  authenticate,
+  resolveTenant,
+  adminOrAbove,
+  validate(checkoutInvoiceSchema),
+  billingController.checkoutInvoice
+);
+
+// Inbound payment gateway webhook handler (unauthenticated, signature-verified in controller)
+router.post(
+  '/webhook',
+  billingController.handleWebhook
 );
 
 export default router;

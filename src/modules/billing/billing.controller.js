@@ -4,9 +4,15 @@
 import { planService } from './plan.service.js';
 import { subscriptionService } from './subscription.service.js';
 import { invoiceService } from './invoice.service.js';
+import { webhookService } from './webhook.service.js';
+import { paymentService } from './payment.service.js';
+import { razorpayService } from './razorpay.service.js';
 import { subscriptionRepository } from './repositories/subscription.repository.js';
+import { invoiceRepository } from './repositories/invoice.repository.js';
 import { sendSuccess } from '../../utils/ApiResponse.js';
 import ApiError from '../../utils/ApiError.js';
+import env from '../../config/env.js';
+import logger from '../../config/logger.js';
 import { HTTP_STATUS } from '../../config/constants.js';
 import {
   ActiveSubscriptionCollisionError,
@@ -71,12 +77,91 @@ export const billingController = {
   },
 
   /**
-   * Initiates a free trial for the authenticated tenant.
+   * Initiates free trial.
    */
   async startTrial(req, res, next) {
     try {
       const sub = await subscriptionService.startTrial(req.tenant.id, req.body.planCode);
       return sendSuccess(res, HTTP_STATUS.CREATED, 'Trial started successfully', sub);
+    } catch (err) {
+      return next(handleControllerError(err));
+    }
+  },
+
+  /**
+   * Initiates subscription payment checkout (creates subscription/invoice/order/payment in one go).
+   */
+  async checkoutSubscription(req, res, next) {
+    try {
+      const { planCode, billingCycle } = req.body;
+      
+      // 1. Get or create active subscription
+      let sub = await subscriptionRepository.findActiveByTenant(req.tenant.id);
+      
+      if (!sub) {
+        // Create new trialing subscription
+        sub = await subscriptionService.startTrial(req.tenant.id, planCode);
+      }
+      
+      // Update billing cycle if changed
+      if (sub.billingCycle !== billingCycle) {
+        sub = await subscriptionRepository.update(req.tenant.id, sub.id, {
+          billingCycle,
+        });
+      }
+
+      // 2. Fetch the plan details to calculate cost
+      const plan = await planService.getPlanById(sub.planId);
+      const cost = await planService.calculatePlanCost(sub.planId, billingCycle);
+
+      // 3. Find if there is an unpaid/draft invoice for this subscription
+      const [existingInvoices] = await invoiceRepository.findManyAndCount(req.tenant.id, {
+        subscriptionId: sub.id,
+        status: 'DRAFT',
+      }, { page: 1, limit: 1 });
+      
+      let invoice = existingInvoices[0];
+      
+      if (!invoice) {
+        // Create new invoice for the subscription
+        invoice = await invoiceService.createInvoice(req.tenant.id, {
+          subscriptionId: sub.id,
+          amount: cost.amount,
+          currency: cost.currency,
+          dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+          status: 'DRAFT',
+          items: [
+            {
+              description: `${plan.name} Plan - ${billingCycle} Subscription`,
+              amount: cost.amount,
+              quantity: 1,
+            }
+          ]
+        });
+      }
+
+      // 4. Create Razorpay order
+      const rzpOrder = await razorpayService.createOrder(
+        Number(invoice.amount),
+        invoice.currency,
+        invoice.id
+      );
+
+      // 5. Create pending payment attempt
+      const payment = await paymentService.createPaymentAttempt(req.tenant.id, invoice.id, {
+        amount: Number(invoice.amount),
+        currency: invoice.currency,
+        gateway: 'RAZORPAY',
+        gatewayOrderId: rzpOrder.id,
+      });
+
+      return sendSuccess(res, HTTP_STATUS.OK, 'Subscription checkout initiated successfully', {
+        subscription: sub,
+        invoice,
+        order: rzpOrder,
+        paymentId: payment.id,
+        key: env.RAZORPAY_KEY_ID,
+      });
     } catch (err) {
       return next(handleControllerError(err));
     }
@@ -140,13 +225,109 @@ export const billingController = {
   },
 
   /**
-   * Settle payment endpoint (Simulated capture).
+   * Settle payment endpoint (Simulated capture or real signature verification).
    */
   async payInvoice(req, res, next) {
     try {
-      const simulatedPaymentId = req.body.paymentId || `pay_simulated_${Date.now()}`;
-      const invoice = await invoiceService.payInvoice(req.tenant.id, req.params.id, simulatedPaymentId);
+      const { paymentId, gatewayPaymentId, gatewaySignature } = req.body;
+      let invoice;
+
+      if (paymentId && gatewayPaymentId && gatewaySignature) {
+        // Verify signature and record the payment
+        await paymentService.verifyAndRecordPayment(req.tenant.id, paymentId, {
+          gatewayPaymentId,
+          gatewaySignature,
+        });
+        invoice = await invoiceService.getInvoiceById(req.tenant.id, req.params.id);
+      } else {
+        // Fallback for simulation/testing (backward-compatibility)
+        const simulatedPaymentId = paymentId || `pay_simulated_${Date.now()}`;
+        invoice = await invoiceService.payInvoice(req.tenant.id, req.params.id, simulatedPaymentId);
+      }
+
       return sendSuccess(res, HTTP_STATUS.OK, 'Invoice paid successfully', invoice);
+    } catch (err) {
+      return next(handleControllerError(err));
+    }
+  },
+
+  /**
+   * Initiates Razorpay checkout order for an invoice.
+   */
+  async checkoutInvoice(req, res, next) {
+    try {
+      const invoice = await invoiceService.getInvoiceById(req.tenant.id, req.params.id);
+      if (invoice.status === 'PAID') {
+        throw new InvoiceAlreadyPaidError('Invoice is already paid');
+      }
+
+      // Generate a Razorpay order
+      const rzpOrder = await razorpayService.createOrder(
+        Number(invoice.amount),
+        invoice.currency,
+        invoice.id
+      );
+
+      // Log a pending payment attempt in the database
+      const payment = await paymentService.createPaymentAttempt(req.tenant.id, invoice.id, {
+        amount: Number(invoice.amount),
+        currency: invoice.currency,
+        gateway: 'RAZORPAY',
+        gatewayOrderId: rzpOrder.id,
+      });
+
+      return sendSuccess(res, HTTP_STATUS.OK, 'Checkout initiated successfully', {
+        order: rzpOrder,
+        paymentId: payment.id,
+        key: env.RAZORPAY_KEY_ID,
+      });
+    } catch (err) {
+      return next(handleControllerError(err));
+    }
+  },
+
+  /**
+   * Razorpay webhook callback handler.
+   */
+  async handleWebhook(req, res, next) {
+    try {
+      const signature = req.headers['x-razorpay-signature'];
+      const rawBody = req.rawBody ? req.rawBody.toString('utf8') : JSON.stringify(req.body);
+
+      // Verify cryptographic signature
+      const isValid = webhookService.verifySignature(rawBody, signature, env.RAZORPAY_WEBHOOK_SECRET);
+      if (!isValid) {
+        logger.warn('[BillingController] Webhook signature validation failed.');
+        return next(ApiError.badRequest('Invalid signature'));
+      }
+
+      const eventId = req.body.id;
+      const eventType = req.body.event;
+      const rawPayload = req.body.payload;
+
+      // Map Razorpay-specific payload formats to decoupled service structures
+      let mappedPayload = {};
+      if (eventType === 'payment.captured' && rawPayload?.payment?.entity) {
+        const entity = rawPayload.payment.entity;
+        mappedPayload = {
+          gatewayPaymentId: entity.id,
+          gatewayOrderId: entity.order_id,
+          gatewaySignature: signature,
+          tenantId: entity.notes?.tenantId,
+        };
+      } else if (eventType === 'subscription.charged' && rawPayload?.subscription?.entity) {
+        mappedPayload = {
+          gatewaySubscriptionId: rawPayload.subscription.entity.id,
+          gatewayPaymentId: rawPayload.payment?.entity?.id,
+        };
+      } else if (eventType === 'subscription.cancelled' && rawPayload?.subscription?.entity) {
+        mappedPayload = {
+          gatewaySubscriptionId: rawPayload.subscription.entity.id,
+        };
+      }
+
+      const result = await webhookService.processWebhook('RAZORPAY', eventId, eventType, mappedPayload);
+      return sendSuccess(res, HTTP_STATUS.OK, 'Webhook processed successfully', result);
     } catch (err) {
       return next(handleControllerError(err));
     }
