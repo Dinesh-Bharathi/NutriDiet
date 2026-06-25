@@ -3,15 +3,16 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider          = "postgresql"
+  url               = env("DATABASE_URL")
+  shadowDatabaseUrl = env("SHADOW_DATABASE_URL")
 }
 
 model Tenant {
   id                          String                       @id @default(cuid())
   name                        String
   slug                        String                       @unique
-  plan                        TenantPlan                   @default(FREE)
+  plan                        TenantPlan                   @default(FREE_TRIAL)
   status                      TenantStatus                 @default(TRIAL)
   email                       String?
   phone                       String?
@@ -58,15 +59,18 @@ model Tenant {
   dietPlanTemplates           DietPlanTemplate[]
   dietPlans                   DietPlan[]
   fileAssets                  FileAsset[]
+  invoices                    Invoice[]
   foodCategories              FoodCategory[]
   foodLibrary                 FoodLibrary[]
   foodTags                    FoodTag[]
   labMarkerDefinitions        LabMarkerDefinition[]
   mealSwapHistories           MealSwapHistory[]
   notifications               Notification[]
+  payments                    Payment[]
   reminderExecutions          ReminderExecution[]
   reminderJobs                ReminderJob[]
   reminderTemplates           ReminderTemplate[]
+  subscriptions               Subscription[]
   users                       User[]
   vaultDocuments              VaultDocument[]
   whatsAppConnection          WhatsAppConnection?
@@ -1502,6 +1506,7 @@ enum Role {
 
 enum TenantPlan {
   FREE
+  FREE_TRIAL
   STARTER
   PROFESSIONAL
   ENTERPRISE
@@ -1793,4 +1798,175 @@ enum ComplianceResponseType {
 enum ComplianceStatus {
   PENDING
   COMPLETED
+}
+
+enum BillingCycle {
+  MONTHLY
+  QUARTERLY
+  HALF_YEARLY
+  YEARLY
+}
+
+enum SubscriptionStatus {
+  trialing
+  active
+  past_due
+  cancelled
+  expired
+  suspended
+}
+
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  PAID
+  VOID
+  UNPAID
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCESSFUL
+  FAILED
+  REFUNDED
+}
+
+model Plan {
+  id           String         @id @default(cuid())
+  code         String         @unique
+  name         String
+  description  String?
+  isActive     Boolean        @default(true)
+  priceMonthly Decimal?       @db.Decimal(12, 2)
+  priceYearly  Decimal?       @db.Decimal(12, 2)
+  currency     String         @default("INR")
+  isCustom     Boolean        @default(false)
+  metadata     Json?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  deletedAt    DateTime?
+  
+  subscriptions Subscription[]
+
+  @@map("plans")
+}
+
+model Subscription {
+  id                    String             @id @default(cuid())
+  tenantId              String
+  planId                String
+  status                SubscriptionStatus @default(trialing)
+  billingCycle          BillingCycle
+  startDate             DateTime           @default(now())
+  endDate               DateTime?
+  currentPeriodStart    DateTime           @default(now())
+  currentPeriodEnd      DateTime
+  cancelAtPeriodEnd     Boolean            @default(false)
+  canceledAt            DateTime?
+  trialStart            DateTime?
+  trialEnd              DateTime?
+  gatewaySubscriptionId String?            @unique
+  gatewayCustomerId     String?
+  metadata              Json?
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
+  deletedAt             DateTime?
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id])
+  plan     Plan      @relation(fields: [planId], references: [id])
+  invoices Invoice[]
+
+  @@index([tenantId])
+  @@index([planId])
+  @@index([status])
+  @@map("subscriptions")
+}
+
+model Invoice {
+  id             String        @id @default(cuid())
+  tenantId       String
+  subscriptionId String?
+  invoiceNumber  String        @unique
+  status         InvoiceStatus @default(DRAFT)
+  amount         Decimal       @db.Decimal(12, 2)
+  currency       String        @default("INR")
+  dueDate        DateTime
+  paidAt         DateTime?
+  billingEmail   String?
+  pdfUrl         String?
+  metadata       Json?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  deletedAt      DateTime?
+
+  tenant       Tenant            @relation(fields: [tenantId], references: [id])
+  subscription Subscription?     @relation(fields: [subscriptionId], references: [id])
+  payments     Payment[]
+  items        InvoiceLineItem[]
+
+  @@index([tenantId])
+  @@index([subscriptionId])
+  @@index([status])
+  @@map("invoices")
+}
+
+model InvoiceLineItem {
+  id          String   @id @default(cuid())
+  invoiceId   String
+  description String
+  amount      Decimal  @db.Decimal(12, 2)
+  quantity    Int      @default(1)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId])
+  @@map("invoice_line_items")
+}
+
+model Payment {
+  id               String        @id @default(cuid())
+  tenantId         String
+  invoiceId        String
+  amount           Decimal       @db.Decimal(12, 2)
+  currency         String        @default("INR")
+  status           PaymentStatus @default(PENDING)
+  gateway          String        @default("SYSTEM")
+  gatewayPaymentId String?       @unique
+  gatewayOrderId   String?
+  gatewaySignature String?
+  errorMessage     String?
+  metadata         Json?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  deletedAt        DateTime?
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id])
+  invoice Invoice @relation(fields: [invoiceId], references: [id])
+
+  @@index([tenantId])
+  @@index([invoiceId])
+  @@index([status])
+  @@map("payments")
+}
+
+model WebhookEvent {
+  id          String    @id @default(cuid())
+  tenantId    String?
+  gateway     String
+  eventId     String    @unique
+  eventType   String
+  payload     Json
+  status      String    @default("RECEIVED")
+  processedAt DateTime?
+  errorText   String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([tenantId])
+  @@index([gateway, eventId])
+  @@index([eventType])
+  @@index([status])
+  @@map("webhook_events")
 }

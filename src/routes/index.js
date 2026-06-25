@@ -85,6 +85,7 @@ import systemRouter from '../modules/system/system.routes.js';
 import storageRouter from '../modules/storage/storage.routes.js';
 import pdfRouter from '../modules/pdf/pdf.routes.js';
 import automationRouter from '../modules/automation/automation.routes.js';
+import billingRouter from '../modules/billing/billing.routes.js';
 
 router.use('/', cycleRouter);
 router.use('/', templateCycleRouter);
@@ -96,6 +97,7 @@ router.use('/system', systemRouter);
 router.use('/storage', storageRouter);
 router.use('/pdf', pdfRouter);
 router.use('/automation', automationRouter);
+router.use('/billing', billingRouter);
 
 // ── Foundation ping route ────────────────────────────────────────────────────
 router.get('/ping', (_req, res) => {
