@@ -1,6 +1,8 @@
 // backend/tests/verify-billing-services.js
 // Verification script for Phase 1C Billing & Subscription Services.
 
+import crypto from 'crypto';
+import env from '../src/config/env.js';
 import prisma from '../src/lib/prisma.js';
 import { planService } from '../src/modules/billing/plan.service.js';
 import { subscriptionService } from '../src/modules/billing/subscription.service.js';
@@ -266,10 +268,21 @@ async function run() {
     });
     console.log(`✅ Payment attempt registered (ID: ${payment.id}, Status: ${payment.status})`);
 
+    // Generate valid cryptographic signature using test config secret
+    const orderId = payment.gatewayOrderId; // 'order_new_invoice_123'
+    const gatewayPaymentId = 'pay_verify_success_999';
+    let gatewaySignature = 'sig_verify_success_999';
+    if (env.RAZORPAY_KEY_SECRET && !env.RAZORPAY_KEY_SECRET.startsWith('mockkey')) {
+      gatewaySignature = crypto
+        .createHmac('sha256', env.RAZORPAY_KEY_SECRET)
+        .update(`${orderId}|${gatewayPaymentId}`)
+        .digest('hex');
+    }
+
     // Capture payment success
     const successfulPayment = await paymentService.verifyAndRecordPayment(tenant.id, payment.id, {
-      gatewayPaymentId: 'pay_verify_success_999',
-      gatewaySignature: 'sig_verify_success_999',
+      gatewayPaymentId,
+      gatewaySignature,
     });
 
     const settledInvoice = await invoiceService.getInvoiceById(tenant.id, newInvoice.id);

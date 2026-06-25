@@ -390,6 +390,40 @@ export const subscriptionService = {
 billingEventBus.subscribe('InvoicePaid', async (event) => {
   try {
     if (event.subscriptionId) {
+      // 1. Fetch the invoice to check for plan upgrade metadata
+      const invoice = await prisma.invoice.findUnique({
+        where: { id: event.invoiceId },
+      });
+
+      if (invoice && invoice.metadata && typeof invoice.metadata === 'object' && invoice.metadata.targetPlanId) {
+        const { targetPlanId, targetBillingCycle } = invoice.metadata;
+        const now = new Date();
+        const cycleDays = getCycleDays(targetBillingCycle || 'MONTHLY');
+        const periodEnd = new Date(now.getTime() + cycleDays * 24 * 60 * 60 * 1000);
+
+        // Directly upgrade/change the subscription details
+        await subscriptionRepository.update(event.tenantId, event.subscriptionId, {
+          planId: targetPlanId,
+          billingCycle: targetBillingCycle || 'MONTHLY',
+          status: 'active',
+          currentPeriodStart: now,
+          currentPeriodEnd: periodEnd,
+          cancelAtPeriodEnd: false,
+          canceledAt: null,
+        });
+
+        logger.info(`[SubscriptionService] Upgraded subscription ${event.subscriptionId} to plan ${targetPlanId} via Invoice ${event.invoiceId}`);
+        
+        billingEventBus.publish('SubscriptionActivated', {
+          tenantId: event.tenantId,
+          subscriptionId: event.subscriptionId,
+          planId: targetPlanId,
+          periodEnd,
+        });
+        return;
+      }
+
+      // Standard trial to active transition if no upgrade metadata is present
       await subscriptionService.activateSubscription(event.tenantId, event.subscriptionId, {
         gatewaySubscriptionId: event.gatewaySubscriptionId,
         gatewayCustomerId: event.gatewayCustomerId,

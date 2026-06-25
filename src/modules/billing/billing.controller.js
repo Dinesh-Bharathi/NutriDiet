@@ -95,6 +95,10 @@ export const billingController = {
     try {
       const { planCode, billingCycle } = req.body;
       
+      // Find the target plan details to calculate cost
+      const plan = await planService.getPlanByCode(planCode);
+      const cost = await planService.calculatePlanCost(plan.id, billingCycle);
+      
       // 1. Get or create active subscription
       let sub = await subscriptionRepository.findActiveByTenant(req.tenant.id);
       
@@ -103,33 +107,36 @@ export const billingController = {
         sub = await subscriptionService.startTrial(req.tenant.id, planCode);
       }
       
-      // Update billing cycle if changed
-      if (sub.billingCycle !== billingCycle) {
-        sub = await subscriptionRepository.update(req.tenant.id, sub.id, {
-          billingCycle,
-        });
+      // If already active on the SAME plan and cycle, reject duplicate checkouts
+      if (sub.status === 'active' && sub.planId === plan.id && sub.billingCycle === billingCycle) {
+        throw new ActiveSubscriptionCollisionError('You are already actively subscribed to this plan tier.');
       }
 
-      // 2. Fetch the plan details to calculate cost
-      const plan = await planService.getPlanById(sub.planId);
-      const cost = await planService.calculatePlanCost(sub.planId, billingCycle);
-
-      // 3. Find if there is an unpaid/draft invoice for this subscription
+      // 2. Find if there is an unpaid/draft invoice for this subscription matching the target plan
       const [existingInvoices] = await invoiceRepository.findManyAndCount(req.tenant.id, {
         subscriptionId: sub.id,
         status: 'DRAFT',
-      }, { page: 1, limit: 1 });
+      }, { page: 1, limit: 100 });
       
-      let invoice = existingInvoices[0];
+      let invoice = existingInvoices.find(inv => 
+        inv.metadata && 
+        typeof inv.metadata === 'object' && 
+        inv.metadata.targetPlanId === plan.id &&
+        inv.metadata.targetBillingCycle === billingCycle
+      );
       
       if (!invoice) {
-        // Create new invoice for the subscription
+        // Create new invoice for the subscription upgrade/purchase
         invoice = await invoiceService.createInvoice(req.tenant.id, {
           subscriptionId: sub.id,
           amount: cost.amount,
           currency: cost.currency,
           dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
           status: 'DRAFT',
+          metadata: {
+            targetPlanId: plan.id,
+            targetBillingCycle: billingCycle,
+          },
           items: [
             {
               description: `${plan.name} Plan - ${billingCycle} Subscription`,
@@ -139,22 +146,22 @@ export const billingController = {
           ]
         });
       }
-
-      // 4. Create Razorpay order
+ 
+      // 3. Create Razorpay order
       const rzpOrder = await razorpayService.createOrder(
         Number(invoice.amount),
         invoice.currency,
         invoice.id
       );
-
-      // 5. Create pending payment attempt
+ 
+      // 4. Create pending payment attempt
       const payment = await paymentService.createPaymentAttempt(req.tenant.id, invoice.id, {
         amount: Number(invoice.amount),
         currency: invoice.currency,
         gateway: 'RAZORPAY',
         gatewayOrderId: rzpOrder.id,
       });
-
+ 
       return sendSuccess(res, HTTP_STATUS.OK, 'Subscription checkout initiated successfully', {
         subscription: sub,
         invoice,
