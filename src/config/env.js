@@ -106,6 +106,10 @@ const env = Object.freeze({
   RAZORPAY_KEY_SECRET: process.env.RAZORPAY_KEY_SECRET || "mockkeysecret456",
   RAZORPAY_WEBHOOK_SECRET: process.env.RAZORPAY_WEBHOOK_SECRET || "mockwebhooksecret789",
 
+  // Ollama AI ────────────────────────────────────────────────────────────
+  OLLAMA_HOST: require_env("OLLAMA_HOST", "http://localhost:11434"),
+  OLLAMA_MODEL: require_env("OLLAMA_MODEL", "gemma3:latest"),
+
   // Derived helpers ───────────────────────────────────────────────────────
   get IS_PRODUCTION() {
     return this.NODE_ENV === "production";

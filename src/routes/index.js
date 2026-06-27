@@ -86,8 +86,10 @@ import storageRouter from '../modules/storage/storage.routes.js';
 import pdfRouter from '../modules/pdf/pdf.routes.js';
 import automationRouter from '../modules/automation/automation.routes.js';
 import billingRouter from '../modules/billing/billing.routes.js';
+import aiRouter from '../modules/ai/ai.routes.js';
 
 router.use('/billing', billingRouter);
+router.use('/ai', aiRouter);
 router.use('/', cycleRouter);
 router.use('/', templateCycleRouter);
 router.use('/', foodLibraryV2Router);
